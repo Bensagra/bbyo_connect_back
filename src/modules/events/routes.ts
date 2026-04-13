@@ -4,6 +4,7 @@ import { z } from "zod";
 import { ok, fail } from "../../common/api-response";
 import { asyncHandler } from "../../common/async-handler";
 import { canModerate } from "../../common/permissions";
+import { logger } from "../../config/logger";
 import { requireAuth } from "../../middlewares/auth";
 import { denyRoles } from "../../middlewares/rbac";
 import { validateBody, validateParams, validateQuery } from "../../middlewares/validate";
@@ -74,23 +75,32 @@ eventsRouter.get(
     const limit = query.limit;
     const visibilityIn = actor.role === Role.guest ? [EventVisibility.public] : [EventVisibility.public, EventVisibility.chapter, EventVisibility.region, EventVisibility.private];
 
-    const events = await prisma.event.findMany({
-      where: {
-        deletedAt: null,
-        visibility: query.visibility ? query.visibility : { in: visibilityIn },
-      },
-      orderBy: { startAt: "asc" },
-      take: limit + 1,
-      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
-    });
+    try {
+      const events = await prisma.event.findMany({
+        where: {
+          deletedAt: null,
+          visibility: query.visibility ? query.visibility : { in: visibilityIn },
+        },
+        orderBy: { startAt: "asc" },
+        take: limit + 1,
+        ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+      });
 
-    const hasNextPage = events.length > limit;
-    const sliced = hasNextPage ? events.slice(0, limit) : events;
+      const hasNextPage = events.length > limit;
+      const sliced = hasNextPage ? events.slice(0, limit) : events;
 
-    return ok(res, sliced, {
-      hasNextPage,
-      nextCursor: hasNextPage ? sliced[sliced.length - 1]?.id : null,
-    });
+      return ok(res, sliced, {
+        hasNextPage,
+        nextCursor: hasNextPage ? sliced[sliced.length - 1]?.id : null,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "events.list failed");
+      return ok(res, [], {
+        hasNextPage: false,
+        nextCursor: null,
+        degraded: true,
+      });
+    }
   }),
 );
 

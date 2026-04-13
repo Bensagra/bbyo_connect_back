@@ -3,6 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { ok, fail } from "../../common/api-response";
 import { asyncHandler } from "../../common/async-handler";
+import { logger } from "../../config/logger";
 import { requireAuth } from "../../middlewares/auth";
 import { denyRoles } from "../../middlewares/rbac";
 import { validateBody, validateParams, validateQuery } from "../../middlewares/validate";
@@ -30,25 +31,34 @@ chaptersRouter.get(
   asyncHandler(async (req, res) => {
     const query = req.query as unknown as z.infer<typeof listChaptersQuery>;
 
-    const chapters = await prisma.chapter.findMany({
-      where: {
-        deletedAt: null,
-        isActive: true,
-        ...(query.regionId ? { regionId: query.regionId } : {}),
-        ...(query.country ? { country: query.country } : {}),
-      },
-      orderBy: { name: "asc" },
-      take: query.limit + 1,
-      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
-    });
+    try {
+      const chapters = await prisma.chapter.findMany({
+        where: {
+          deletedAt: null,
+          isActive: true,
+          ...(query.regionId ? { regionId: query.regionId } : {}),
+          ...(query.country ? { country: query.country } : {}),
+        },
+        orderBy: { name: "asc" },
+        take: query.limit + 1,
+        ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+      });
 
-    const hasNextPage = chapters.length > query.limit;
-    const sliced = hasNextPage ? chapters.slice(0, query.limit) : chapters;
+      const hasNextPage = chapters.length > query.limit;
+      const sliced = hasNextPage ? chapters.slice(0, query.limit) : chapters;
 
-    return ok(res, sliced, {
-      hasNextPage,
-      nextCursor: hasNextPage ? sliced[sliced.length - 1]?.id : null,
-    });
+      return ok(res, sliced, {
+        hasNextPage,
+        nextCursor: hasNextPage ? sliced[sliced.length - 1]?.id : null,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "chapters.list failed");
+      return ok(res, [], {
+        hasNextPage: false,
+        nextCursor: null,
+        degraded: true,
+      });
+    }
   }),
 );
 
