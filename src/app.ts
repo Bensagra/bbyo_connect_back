@@ -110,3 +110,8 @@ export function createApp() {
 
   return app;
 }
+
+// Export a singleton app so platforms that auto-detect a module default export can run it directly.
+const app = createApp();
+
+export default app;

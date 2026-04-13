@@ -1,19 +1,27 @@
 import serverless from "serverless-http";
-import { createApp } from "../src/app";
 
 let handler: ReturnType<typeof serverless> | null = null;
-let bootstrapError: unknown = null;
+let bootstrapError: string | null = null;
 
-try {
-  const app = createApp();
-  handler = serverless(app);
-} catch (error) {
-  bootstrapError = error;
+async function ensureHandler() {
+  if (handler || bootstrapError) {
+    return;
+  }
+
+  try {
+    const module = await import("../src/app");
+    const app = module.default;
+    handler = serverless(app);
+  } catch (error) {
+    bootstrapError = error instanceof Error ? error.message : "Unknown bootstrap error";
+  }
 }
 
 export default async function vercelHandler(req: any, res: any) {
+  await ensureHandler();
+
   if (!handler) {
-    const message = bootstrapError instanceof Error ? bootstrapError.message : "Unknown bootstrap error";
+    const message = bootstrapError ?? "Unknown bootstrap error";
     (res as { statusCode: number; setHeader: (name: string, value: string) => void; end: (body: string) => void }).statusCode = 500;
     (res as { setHeader: (name: string, value: string) => void }).setHeader("content-type", "application/json; charset=utf-8");
     (res as { end: (body: string) => void }).end(

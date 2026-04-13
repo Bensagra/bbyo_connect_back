@@ -1,5 +1,5 @@
 import { createServer } from "http";
-import { createApp } from "./app";
+import app from "./app";
 import { env } from "./config/env";
 import { logger } from "./config/logger";
 import { prisma } from "./lib/prisma";
@@ -7,7 +7,6 @@ import { getRedisClient } from "./lib/redis";
 import { initSocket } from "./realtime/socket";
 
 async function bootstrap() {
-  const app = createApp();
   const server = createServer(app);
   initSocket(server);
 
