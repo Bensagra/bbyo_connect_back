@@ -1,0 +1,1206 @@
+openapi: 3.1.0
+info:
+  title: BBYO Connect API
+  version: 1.0.0
+  summary: Secure closed social network backend for BBYO teens and chapter accounts
+  description: |
+    Production-oriented backend API for BBYO Connect.
+
+    Security and youth safety features:
+    - JWT access tokens + rotating refresh tokens
+    - Role-based access control
+    - Audit logging
+    - Reporting and moderation workflows
+    - Language filtering hooks
+
+    Realtime channel (Socket.IO):
+    - message.created
+    - message.edited
+    - message.deleted
+    - conversation.updated
+    - notification.created
+servers:
+  - url: http://localhost:4000
+    description: Local development
+security:
+  - BearerAuth: []
+tags:
+  - name: Auth
+  - name: Verification
+  - name: Chapter Approvals
+  - name: Feed
+  - name: Stories
+  - name: Messaging
+  - name: Events
+  - name: Chapters
+  - name: Resources
+  - name: Gamification
+  - name: Reports
+  - name: Notifications
+  - name: Uploads
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    IdParam:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    PostIdParam:
+      name: postId
+      in: path
+      required: true
+      schema:
+        type: string
+    StoryIdParam:
+      name: storyId
+      in: path
+      required: true
+      schema:
+        type: string
+  headers:
+    IdempotencyKey:
+      description: Required for sensitive writes to guarantee idempotency
+      schema:
+        type: string
+  schemas:
+    ApiError:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          description: Optional error details
+    ApiEnvelope:
+      type: object
+      required: [data, meta, error]
+      properties:
+        data:
+          description: Response payload
+        meta:
+          description: Pagination or extra metadata
+        error:
+          oneOf:
+            - type: "null"
+            - $ref: '#/components/schemas/ApiError'
+    Role:
+      type: string
+      enum:
+        - guest
+        - teen_pending
+        - teen_verified
+        - chapter_pending
+        - chapter_verified
+        - advisor
+        - moderator
+        - regional_admin
+        - global_admin
+    Locale:
+      type: string
+      enum: [en, es, he, fr]
+    RegisterRequest:
+      type: object
+      required: [accountType, memberId, password]
+      properties:
+        accountType:
+          type: string
+          enum: [teen, chapter]
+        email:
+          type: string
+          format: email
+        memberId:
+          type: string
+        password:
+          type: string
+          minLength: 8
+        profile:
+          type: object
+          additionalProperties: true
+    LoginRequest:
+      type: object
+      required: [memberIdOrEmail, password]
+      properties:
+        memberIdOrEmail:
+          type: string
+        password:
+          type: string
+          minLength: 8
+        deviceInfo:
+          type: object
+          additionalProperties: true
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+        deviceInfo:
+          type: object
+          additionalProperties: true
+    PostCreateRequest:
+      type: object
+      required: [category, text, language, visibility]
+      properties:
+        category:
+          type: string
+          enum: [general, chapter_update, event, leadership, creative, safety]
+        text:
+          type: string
+        language:
+          $ref: '#/components/schemas/Locale'
+        visibility:
+          type: string
+          enum: [public, chapter, region, global, private]
+        media:
+          type: array
+          items:
+            type: object
+            required: [type, url]
+            properties:
+              type:
+                type: string
+                enum: [image, video, audio, voice_note, file]
+              url:
+                type: string
+                format: uri
+              thumbnailUrl:
+                type: string
+                format: uri
+              duration:
+                type: integer
+    EventCreateRequest:
+      type: object
+      required: [title, description, startAt, endAt, timezone, visibility]
+      properties:
+        chapterId:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        timezone:
+          type: string
+        location:
+          type: string
+        isVirtual:
+          type: boolean
+        visibility:
+          type: string
+          enum: [public, chapter, region, private]
+    ResolveReportRequest:
+      type: object
+      required: [status, actionType]
+      properties:
+        status:
+          type: string
+          enum: [resolved, dismissed]
+        actionType:
+          type: string
+          enum: [hide_content, warn_user, suspend_user, ban_user, restore_content, note]
+        notes:
+          type: string
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Register teen or chapter account
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+  /auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Login with memberId/email and password
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiEnvelope'
+  /auth/guest:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Create guest session
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                locale:
+                  $ref: '#/components/schemas/Locale'
+      responses:
+        '201':
+          description: Guest user created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Rotate refresh token and return new access token
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Token rotated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        '200':
+          description: Logged out
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Current authenticated user profile
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /auth/export-data:
+    get:
+      tags: [Auth]
+      summary: Export account data for GDPR data portability
+      responses:
+        '200':
+          description: Export payload
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /auth/delete-account:
+    delete:
+      tags: [Auth]
+      summary: Soft-delete account and revoke sessions
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Account deleted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+
+  /verification/vouches:
+    post:
+      tags: [Verification]
+      summary: Submit a teen verification vouch
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetUserId]
+              properties:
+                targetUserId: { type: string }
+      responses:
+        '201':
+          description: Vouch accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /verification/status:
+    get:
+      tags: [Verification]
+      summary: Get my verification status
+      responses:
+        '200':
+          description: Verification summary
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+
+  /chapter-approvals/request:
+    post:
+      tags: [Chapter Approvals]
+      summary: Create chapter approval request
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes: { type: string }
+      responses:
+        '201':
+          description: Request created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /chapter-approvals/{id}/approve:
+    patch:
+      tags: [Chapter Approvals]
+      summary: Approve chapter request
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes: { type: string }
+      responses:
+        '200':
+          description: Request approved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /chapter-approvals/{id}/reject:
+    patch:
+      tags: [Chapter Approvals]
+      summary: Reject chapter request
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes: { type: string }
+      responses:
+        '200':
+          description: Request rejected
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+
+  /feed:
+    get:
+      tags: [Feed]
+      summary: Feed listing (cursor-based)
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [general, chapter_update, event, leadership, creative, safety]
+      responses:
+        '200':
+          description: Feed page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+    post:
+      tags: [Feed]
+      summary: Create feed post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostCreateRequest'
+      responses:
+        '201':
+          description: Post created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /feed/{postId}:
+    get:
+      tags: [Feed]
+      summary: Get single post
+      parameters:
+        - $ref: '#/components/parameters/PostIdParam'
+      responses:
+        '200':
+          description: Post
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+    patch:
+      tags: [Feed]
+      summary: Edit post
+      parameters:
+        - $ref: '#/components/parameters/PostIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: string }
+                category:
+                  type: string
+                  enum: [general, chapter_update, event, leadership, creative, safety]
+                visibility:
+                  type: string
+                  enum: [public, chapter, region, global, private]
+      responses:
+        '200':
+          description: Post updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+    delete:
+      tags: [Feed]
+      summary: Soft delete post
+      parameters:
+        - $ref: '#/components/parameters/PostIdParam'
+      responses:
+        '200':
+          description: Post deleted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /feed/{postId}/reactions:
+    post:
+      tags: [Feed]
+      summary: Add/update post reaction
+      parameters:
+        - $ref: '#/components/parameters/PostIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reactionType]
+              properties:
+                reactionType:
+                  type: string
+                  enum: [like, love, support, clap, celebrate, fire]
+      responses:
+        '201':
+          description: Reaction set
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+    delete:
+      tags: [Feed]
+      summary: Remove own reaction
+      parameters:
+        - $ref: '#/components/parameters/PostIdParam'
+      responses:
+        '200':
+          description: Reaction removed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /feed/{postId}/comments:
+    get:
+      tags: [Feed]
+      summary: List comments for post
+      parameters:
+        - $ref: '#/components/parameters/PostIdParam'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Comment page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+    post:
+      tags: [Feed]
+      summary: Add comment to post
+      parameters:
+        - $ref: '#/components/parameters/PostIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text, language]
+              properties:
+                text: { type: string }
+                language: { $ref: '#/components/schemas/Locale' }
+      responses:
+        '201':
+          description: Comment created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+
+  /stories:
+    get:
+      tags: [Stories]
+      summary: List active stories
+      responses:
+        '200':
+          description: Stories
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+    post:
+      tags: [Stories]
+      summary: Create story
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mediaUrl]
+              properties:
+                mediaUrl:
+                  type: string
+                  format: uri
+                expiresInHours:
+                  type: integer
+      responses:
+        '201':
+          description: Story created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /stories/{storyId}:
+    delete:
+      tags: [Stories]
+      summary: Delete story
+      parameters:
+        - $ref: '#/components/parameters/StoryIdParam'
+      responses:
+        '200':
+          description: Story deleted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+
+  /messages/conversations:
+    get:
+      tags: [Messaging]
+      summary: List my conversations
+      responses:
+        '200':
+          description: Conversations
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+    post:
+      tags: [Messaging]
+      summary: Create conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, memberIds]
+              properties:
+                type:
+                  type: string
+                  enum: [private, group, chapter]
+                title:
+                  type: string
+                isEncrypted:
+                  type: boolean
+                memberIds:
+                  type: array
+                  items: { type: string }
+      responses:
+        '201':
+          description: Conversation created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /messages/conversations/{id}/messages:
+    get:
+      tags: [Messaging]
+      summary: List messages in conversation
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Message page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+    post:
+      tags: [Messaging]
+      summary: Create message in conversation
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+                contentType:
+                  type: string
+                  enum: [text, image, video, audio, voice_note, file, system]
+                attachments:
+                  type: array
+                  items:
+                    type: object
+                    required: [url, type]
+                    properties:
+                      url: { type: string, format: uri }
+                      type:
+                        type: string
+                        enum: [image, video, audio, voice_note, file]
+                      sizeBytes: { type: integer }
+      responses:
+        '201':
+          description: Message created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /messages/messages/{id}:
+    patch:
+      tags: [Messaging]
+      summary: Edit message
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: { type: string }
+      responses:
+        '200':
+          description: Message updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+    delete:
+      tags: [Messaging]
+      summary: Delete message
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Message deleted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /messages/messages/{id}/read:
+    post:
+      tags: [Messaging]
+      summary: Mark message as read (read receipt)
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '201':
+          description: Read receipt created/updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+
+  /events:
+    get:
+      tags: [Events]
+      summary: List events
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: visibility
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [public, chapter, region, private]
+      responses:
+        '200':
+          description: Event page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+    post:
+      tags: [Events]
+      summary: Create event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventCreateRequest'
+      responses:
+        '201':
+          description: Event created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /events/{id}:
+    get:
+      tags: [Events]
+      summary: Get event by id
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Event
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+    patch:
+      tags: [Events]
+      summary: Update event
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventCreateRequest'
+      responses:
+        '200':
+          description: Event updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+    delete:
+      tags: [Events]
+      summary: Delete event
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Event deleted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /events/{id}/register:
+    post:
+      tags: [Events]
+      summary: Register for event
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '201':
+          description: Registered
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+    delete:
+      tags: [Events]
+      summary: Cancel event registration
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Registration removed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /events/{id}/reminders:
+    post:
+      tags: [Events]
+      summary: Create event reminder
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [remindAt]
+              properties:
+                remindAt:
+                  type: string
+                  format: date-time
+      responses:
+        '201':
+          description: Reminder created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+
+  /chapters:
+    get:
+      tags: [Chapters]
+      summary: List active chapters
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: regionId
+          in: query
+          schema: { type: string }
+        - name: country
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Chapter page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /chapters/map-pins:
+    get:
+      tags: [Chapters]
+      summary: Chapter map pin dataset
+      responses:
+        '200':
+          description: Pins
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /chapters/{id}:
+    get:
+      tags: [Chapters]
+      summary: Chapter detail
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Chapter
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /chapters/{id}/board:
+    get:
+      tags: [Chapters]
+      summary: Chapter board posts
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Chapter board
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /chapters/{id}/projects:
+    get:
+      tags: [Chapters]
+      summary: Chapter creative projects
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Chapter projects
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /chapters/{id}/travel-intro:
+    post:
+      tags: [Chapters]
+      summary: Create travel intro request
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+      responses:
+        '201':
+          description: Travel intro created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+
+  /resources:
+    get:
+      tags: [Resources]
+      summary: Leadership/safety resources
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: language
+          in: query
+          schema: { $ref: '#/components/schemas/Locale' }
+        - name: visibility
+          in: query
+          schema:
+            type: string
+            enum: [public, chapter, region, global, private]
+      responses:
+        '200':
+          description: Resource page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+    post:
+      tags: [Resources]
+      summary: Create resource
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, type, language, url, visibility]
+              properties:
+                title: { type: string }
+                type:
+                  type: string
+                  enum: [article, video, podcast, toolkit, pdf, link]
+                language: { $ref: '#/components/schemas/Locale' }
+                url: { type: string, format: uri }
+                visibility:
+                  type: string
+                  enum: [public, chapter, region, global, private]
+      responses:
+        '201':
+          description: Resource created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+
+  /gamification/leaderboard:
+    get:
+      tags: [Gamification]
+      summary: Get leaderboard snapshot
+      parameters:
+        - name: scope
+          in: query
+          schema:
+            type: string
+            enum: [chapter, region, global]
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [weekly, monthly, quarterly, yearly]
+        - name: chapterId
+          in: query
+          schema: { type: string }
+        - name: regionId
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Leaderboard
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /gamification/me:
+    get:
+      tags: [Gamification]
+      summary: Get my points and badges
+      responses:
+        '200':
+          description: Gamification profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+
+  /reports:
+    post:
+      tags: [Reports]
+      summary: Create content or user report
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetType, targetId, reason]
+              properties:
+                targetType:
+                  type: string
+                  enum: [user, post, comment, story, message, event, chapter]
+                targetId: { type: string }
+                reason: { type: string }
+                details: { type: string }
+      responses:
+        '201':
+          description: Report created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+    get:
+      tags: [Reports]
+      summary: List reports for moderators
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, under_review, resolved, dismissed]
+      responses:
+        '200':
+          description: Reports page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /reports/{id}/resolve:
+    patch:
+      tags: [Reports]
+      summary: Resolve or dismiss report and create moderation action
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveReportRequest'
+      responses:
+        '200':
+          description: Report resolved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: List my notifications
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: unreadOnly
+          in: query
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Notification page
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+  /notifications/{id}/read:
+    patch:
+      tags: [Notifications]
+      summary: Mark one notification as read
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Notification updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }
+
+  /uploads/presign:
+    post:
+      tags: [Uploads]
+      summary: Create temporary signed upload URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fileName, contentType, sizeBytes]
+              properties:
+                fileName: { type: string }
+                contentType: { type: string }
+                sizeBytes: { type: integer }
+      responses:
+        '201':
+          description: Signed upload payload
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiEnvelope' }

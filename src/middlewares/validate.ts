@@ -1,0 +1,53 @@
+import { NextFunction, Request, Response } from "express";
+import { ZodError, ZodSchema, ZodTypeAny } from "zod";
+import { fail } from "../common/api-response";
+
+function formatZodError(error: ZodError) {
+  return error.issues.map((issue) => ({
+    path: issue.path.join("."),
+    message: issue.message,
+    code: issue.code,
+  }));
+}
+
+export function validateBody<T extends ZodTypeAny>(schema: T) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    try {
+      req.body = schema.parse(req.body);
+      return next();
+    } catch (error) {
+      if (error instanceof ZodError) {
+        return fail(res, 400, "VALIDATION_ERROR", "Invalid request body", formatZodError(error));
+      }
+      return fail(res, 400, "VALIDATION_ERROR", "Invalid request body");
+    }
+  };
+}
+
+export function validateQuery<T>(schema: ZodSchema<T>) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    try {
+      req.query = schema.parse(req.query) as Request["query"];
+      return next();
+    } catch (error) {
+      if (error instanceof ZodError) {
+        return fail(res, 400, "VALIDATION_ERROR", "Invalid query params", formatZodError(error));
+      }
+      return fail(res, 400, "VALIDATION_ERROR", "Invalid query params");
+    }
+  };
+}
+
+export function validateParams<T>(schema: ZodSchema<T>) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    try {
+      req.params = schema.parse(req.params) as Request["params"];
+      return next();
+    } catch (error) {
+      if (error instanceof ZodError) {
+        return fail(res, 400, "VALIDATION_ERROR", "Invalid route params", formatZodError(error));
+      }
+      return fail(res, 400, "VALIDATION_ERROR", "Invalid route params");
+    }
+  };
+}

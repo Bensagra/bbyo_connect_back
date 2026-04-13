@@ -1,0 +1,821 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  guest
+  teen_pending
+  teen_verified
+  chapter_pending
+  chapter_verified
+  advisor
+  moderator
+  regional_admin
+  global_admin
+}
+
+enum UserStatus {
+  active
+  suspended
+  banned
+  pending
+  deleted
+}
+
+enum VerificationStatus {
+  pending
+  approved
+  rejected
+  revoked
+}
+
+enum ApprovalStatus {
+  pending
+  approved
+  rejected
+}
+
+enum PostCategory {
+  general
+  chapter_update
+  event
+  leadership
+  creative
+  safety
+}
+
+enum Locale {
+  en
+  es
+  he
+  fr
+}
+
+enum Visibility {
+  public
+  chapter
+  region
+  global
+  private
+}
+
+enum MediaType {
+  image
+  video
+  audio
+  voice_note
+  file
+}
+
+enum ReactionType {
+  like
+  love
+  support
+  clap
+  celebrate
+  fire
+}
+
+enum ConversationType {
+  private
+  group
+  chapter
+}
+
+enum ConversationMemberRole {
+  owner
+  admin
+  member
+}
+
+enum MessageContentType {
+  text
+  image
+  video
+  audio
+  voice_note
+  file
+  system
+}
+
+enum EventVisibility {
+  public
+  chapter
+  region
+  private
+}
+
+enum EventRegistrationStatus {
+  registered
+  waitlisted
+  canceled
+  checked_in
+}
+
+enum ResourceType {
+  article
+  video
+  podcast
+  toolkit
+  pdf
+  link
+}
+
+enum CreativeProjectStatus {
+  draft
+  published
+  archived
+}
+
+enum PointsSourceType {
+  post
+  comment
+  reaction
+  event_checkin
+  badge_award
+  leadership_activity
+  moderation_bonus
+  admin_adjustment
+}
+
+enum LeaderboardScope {
+  chapter
+  region
+  global
+}
+
+enum LeaderboardPeriod {
+  weekly
+  monthly
+  quarterly
+  yearly
+}
+
+enum ReportTargetType {
+  user
+  post
+  comment
+  story
+  message
+  event
+  chapter
+}
+
+enum ReportStatus {
+  open
+  under_review
+  resolved
+  dismissed
+}
+
+enum ModerationActionType {
+  hide_content
+  warn_user
+  suspend_user
+  ban_user
+  restore_content
+  note
+}
+
+enum NotificationType {
+  system
+  message
+  moderation
+  event
+  reminder
+  gamification
+  approval
+}
+
+enum DevicePlatform {
+  ios
+  android
+  web
+}
+
+enum TravelIntroStatus {
+  pending
+  accepted
+  rejected
+}
+
+model User {
+  id                        String                 @id @default(cuid())
+  email                     String?                @unique
+  memberId                  String                 @unique
+  passwordHash              String?
+  role                      Role
+  status                    UserStatus             @default(active)
+  lastLoginAt               DateTime?
+  createdAt                 DateTime               @default(now())
+  updatedAt                 DateTime               @updatedAt
+  deletedAt                 DateTime?
+  teenProfile               TeenProfile?
+  chapterProfile            ChapterProfile?
+  chapterAdvisedProfiles    ChapterProfile[]        @relation("ChapterAdvisor")
+  sessionRefreshTokens      SessionRefreshToken[]
+  authoredPosts             Post[]                 @relation("PostAuthorUser")
+  chapterPosts              Post[]                 @relation("PostChapterUser")
+  postReactions             PostReaction[]
+  postComments              PostComment[]
+  stories                   Story[]                @relation("StoryAuthor")
+  storyViews                StoryView[]
+  conversationMembers       ConversationMember[]
+  sentMessages              Message[]              @relation("MessageSender")
+  messageReadReceipts       MessageReadReceipt[]
+  eventRegistrations        EventRegistration[]
+  eventReminders            EventReminder[]
+  resourcesCreated          Resource[]             @relation("ResourceCreator")
+  creativeProjects          CreativeProject[]
+  userBadges                UserBadge[]
+  pointsLedgerEntries       PointsLedger[]
+  reportsFiled              Report[]               @relation("ReportReporter")
+  moderationActions         ModerationAction[]     @relation("ModerationActor")
+  chapterApprovalRequests   ChapterApprovalRequest[] @relation("ChapterRequester")
+  chapterApprovalReviews    ChapterApprovalRequest[] @relation("ChapterReviewer")
+  verificationVouchesGiven  VerificationVouch[]    @relation("VouchBy")
+  verificationVouchesTarget VerificationVouch[]    @relation("VouchTarget")
+  notifications             Notification[]
+  deviceTokens              DeviceToken[]
+  auditLogs                 AuditLog[]             @relation("AuditActor")
+  travelIntrosRequested     TravelIntro[]          @relation("TravelRequester")
+  blockedBy                 BlockRelation[]        @relation("BlockTarget")
+  blocks                    BlockRelation[]        @relation("BlockActor")
+
+  @@index([role, status])
+  @@index([createdAt])
+}
+
+model TeenProfile {
+  userId      String   @id
+  fullName    String
+  pronouns    String?
+  regionId    String?
+  chapterId   String?
+  avatarUrl   String?
+  bio         String?
+  languages   Locale[]
+  interests   String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  region      Region?  @relation(fields: [regionId], references: [id])
+  chapter     Chapter? @relation(fields: [chapterId], references: [id])
+
+  @@index([regionId])
+  @@index([chapterId])
+}
+
+model ChapterProfile {
+  userId         String   @id
+  chapterId      String
+  displayName    String
+  description    String?
+  location       String?
+  advisorUserId  String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chapter        Chapter  @relation(fields: [chapterId], references: [id])
+  advisorUser    User?    @relation("ChapterAdvisor", fields: [advisorUserId], references: [id])
+
+  @@index([chapterId])
+  @@index([advisorUserId])
+}
+
+model Region {
+  id          String        @id @default(cuid())
+  name        String
+  countryCode String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  deletedAt   DateTime?
+  chapters    Chapter[]
+  teens       TeenProfile[]
+  leaderboard LeaderboardSnapshot[]
+
+  @@index([countryCode])
+}
+
+model Chapter {
+  id            String              @id @default(cuid())
+  name          String
+  regionId      String
+  city          String
+  country       String
+  lat           Decimal             @db.Decimal(10, 7)
+  lng           Decimal             @db.Decimal(10, 7)
+  isActive      Boolean             @default(true)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  deletedAt     DateTime?
+  region        Region              @relation(fields: [regionId], references: [id])
+  teenProfiles  TeenProfile[]
+  chapterUsers  ChapterProfile[]
+  events        Event[]
+  projects      CreativeProject[]
+  travelIntros  TravelIntro[]
+  leaderboard   LeaderboardSnapshot[]
+
+  @@index([regionId, isActive])
+  @@index([city, country])
+}
+
+model VerificationVouch {
+  id              String             @id @default(cuid())
+  targetUserId    String
+  vouchedByUserId String
+  status          VerificationStatus @default(approved)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  deletedAt       DateTime?
+  targetUser      User               @relation("VouchTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+  vouchedByUser   User               @relation("VouchBy", fields: [vouchedByUserId], references: [id], onDelete: Cascade)
+
+  @@unique([targetUserId, vouchedByUserId])
+  @@index([targetUserId, status])
+}
+
+model ChapterApprovalRequest {
+  id           String         @id @default(cuid())
+  chapterUserId String
+  reviewerId   String?
+  status       ApprovalStatus @default(pending)
+  notes        String?
+  decidedAt    DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  deletedAt    DateTime?
+  chapterUser  User           @relation("ChapterRequester", fields: [chapterUserId], references: [id], onDelete: Cascade)
+  reviewer     User?          @relation("ChapterReviewer", fields: [reviewerId], references: [id])
+
+  @@index([chapterUserId, status])
+  @@index([reviewerId])
+}
+
+model SessionRefreshToken {
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String   @unique
+  deviceInfo Json?
+  ipAddress  String?
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model Post {
+  id            String       @id @default(cuid())
+  authorUserId  String?
+  chapterUserId String?
+  category      PostCategory
+  text          String
+  language      Locale
+  visibility    Visibility
+  isHidden      Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  deletedAt     DateTime?
+  authorUser    User?        @relation("PostAuthorUser", fields: [authorUserId], references: [id])
+  chapterUser   User?        @relation("PostChapterUser", fields: [chapterUserId], references: [id])
+  media         PostMedia[]
+  reactions     PostReaction[]
+  comments      PostComment[]
+
+  @@index([authorUserId, createdAt])
+  @@index([chapterUserId, createdAt])
+  @@index([visibility, createdAt])
+}
+
+model PostMedia {
+  id           String    @id @default(cuid())
+  postId       String
+  type         MediaType
+  url          String
+  thumbnailUrl String?
+  duration     Int?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+  post         Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+}
+
+model PostReaction {
+  id           String       @id @default(cuid())
+  postId       String
+  userId       String
+  reactionType ReactionType
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  deletedAt    DateTime?
+  post         Post         @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@index([userId, createdAt])
+}
+
+model PostComment {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  text      String
+  language  Locale
+  isHidden  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+  @@index([userId])
+}
+
+model Story {
+  id        String     @id @default(cuid())
+  authorId  String
+  mediaUrl  String
+  expiresAt DateTime
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  deletedAt DateTime?
+  author    User       @relation("StoryAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  views     StoryView[]
+
+  @@index([authorId, createdAt])
+  @@index([expiresAt])
+}
+
+model StoryView {
+  id        String   @id @default(cuid())
+  storyId   String
+  viewerId  String
+  viewedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  viewer    User     @relation(fields: [viewerId], references: [id], onDelete: Cascade)
+
+  @@unique([storyId, viewerId])
+  @@index([viewerId, viewedAt])
+}
+
+model Conversation {
+  id           String               @id @default(cuid())
+  type         ConversationType
+  title        String?
+  isEncrypted  Boolean              @default(false)
+  lastMessageAt DateTime?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  deletedAt    DateTime?
+  members      ConversationMember[]
+  messages     Message[]
+
+  @@index([type, updatedAt])
+}
+
+model ConversationMember {
+  id             String                 @id @default(cuid())
+  conversationId String
+  userId         String
+  role           ConversationMemberRole @default(member)
+  joinedAt       DateTime               @default(now())
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  deletedAt      DateTime?
+  conversation   Conversation           @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId, joinedAt])
+}
+
+model Message {
+  id             String             @id @default(cuid())
+  conversationId String
+  senderId       String
+  content        String
+  contentType    MessageContentType
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  editedAt       DateTime?
+  deletedAt      DateTime?
+  conversation   Conversation       @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User               @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  attachments    MessageAttachment[]
+  readReceipts   MessageReadReceipt[]
+
+  @@index([conversationId, createdAt])
+  @@index([senderId, createdAt])
+}
+
+model MessageAttachment {
+  id        String    @id @default(cuid())
+  messageId String
+  url       String
+  type      MediaType
+  sizeBytes Int?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  message   Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+}
+
+model MessageReadReceipt {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  readAt    DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId, readAt])
+}
+
+model Event {
+  id          String          @id @default(cuid())
+  chapterId   String?
+  title       String
+  description String
+  startAt     DateTime
+  endAt       DateTime
+  timezone    String
+  location    String?
+  isVirtual   Boolean         @default(false)
+  visibility  EventVisibility
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  deletedAt   DateTime?
+  chapter     Chapter?        @relation(fields: [chapterId], references: [id])
+  registrations EventRegistration[]
+  reminders   EventReminder[]
+
+  @@index([chapterId, startAt])
+  @@index([visibility, startAt])
+}
+
+model EventRegistration {
+  id          String                  @id @default(cuid())
+  eventId     String
+  userId      String
+  status      EventRegistrationStatus @default(registered)
+  checkedInAt DateTime?
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  deletedAt   DateTime?
+  event       Event                   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user        User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+  @@index([userId, createdAt])
+}
+
+model EventReminder {
+  id        String   @id @default(cuid())
+  eventId   String
+  userId    String
+  remindAt  DateTime
+  sentAt    DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId, remindAt])
+  @@index([sentAt, remindAt])
+}
+
+model Resource {
+  id         String       @id @default(cuid())
+  title      String
+  type       ResourceType
+  language   Locale
+  url        String
+  visibility Visibility
+  createdBy  String
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  deletedAt  DateTime?
+  creator    User         @relation("ResourceCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([visibility, language])
+  @@index([createdBy, createdAt])
+}
+
+model CreativeProject {
+  id          String               @id @default(cuid())
+  userId      String
+  chapterId   String?
+  title       String
+  description String
+  mediaUrl    String?
+  status      CreativeProjectStatus
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  deletedAt   DateTime?
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chapter     Chapter?             @relation(fields: [chapterId], references: [id])
+
+  @@index([chapterId, status])
+  @@index([userId, createdAt])
+}
+
+model Badge {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String
+  points      Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+  userBadges  UserBadge[]
+}
+
+model UserBadge {
+  id        String   @id @default(cuid())
+  userId    String
+  badgeId   String
+  awardedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge     Badge    @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badgeId])
+  @@index([badgeId])
+}
+
+model PointsLedger {
+  id         String           @id @default(cuid())
+  userId     String
+  sourceType PointsSourceType
+  sourceId   String?
+  points     Int
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([sourceType, sourceId])
+}
+
+model LeaderboardSnapshot {
+  id         String            @id @default(cuid())
+  scope      LeaderboardScope
+  period     LeaderboardPeriod
+  regionId   String?
+  chapterId  String?
+  payloadJson Json
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  deletedAt  DateTime?
+  region     Region?           @relation(fields: [regionId], references: [id])
+  chapter    Chapter?          @relation(fields: [chapterId], references: [id])
+
+  @@index([scope, period, createdAt])
+  @@index([regionId])
+  @@index([chapterId])
+}
+
+model Report {
+  id          String           @id @default(cuid())
+  reporterId  String
+  targetType  ReportTargetType
+  targetId    String
+  reason      String
+  details     String?
+  status      ReportStatus     @default(open)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  deletedAt   DateTime?
+  reporter    User             @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  actions     ModerationAction[]
+
+  @@index([status, createdAt])
+  @@index([targetType, targetId])
+}
+
+model ModerationAction {
+  id          String               @id @default(cuid())
+  reportId    String
+  moderatorId String
+  actionType  ModerationActionType
+  notes       String?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  deletedAt   DateTime?
+  report      Report               @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  moderator   User                 @relation("ModerationActor", fields: [moderatorId], references: [id], onDelete: Cascade)
+
+  @@index([moderatorId, createdAt])
+}
+
+model SafetyResource {
+  id               String   @id @default(cuid())
+  title            String
+  locale           Locale
+  hotline          String?
+  url              String
+  anonymousAllowed Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  deletedAt        DateTime?
+
+  @@index([locale])
+}
+
+model Notification {
+  id         String           @id @default(cuid())
+  userId     String
+  type       NotificationType
+  title      String
+  body       String
+  dataJson   Json?
+  readAt     DateTime?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  deletedAt  DateTime?
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+}
+
+model DeviceToken {
+  id         String         @id @default(cuid())
+  userId     String
+  platform   DevicePlatform
+  pushToken  String         @unique
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  deletedAt  DateTime?
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, pushToken])
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  actorId      String?
+  action       String
+  entityType   String
+  entityId     String?
+  metadataJson Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  actor        User?    @relation("AuditActor", fields: [actorId], references: [id])
+
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId])
+}
+
+model TravelIntro {
+  id              String            @id @default(cuid())
+  chapterId       String
+  requesterUserId String
+  message         String?
+  status          TravelIntroStatus @default(pending)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  deletedAt       DateTime?
+  chapter         Chapter           @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  requester       User              @relation("TravelRequester", fields: [requesterUserId], references: [id], onDelete: Cascade)
+
+  @@index([chapterId, createdAt])
+  @@index([requesterUserId, createdAt])
+}
+
+model BlockRelation {
+  id            String   @id @default(cuid())
+  actorUserId   String
+  targetUserId  String
+  reason        String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
+  actorUser     User     @relation("BlockActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+  targetUser    User     @relation("BlockTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  @@unique([actorUserId, targetUserId])
+  @@index([targetUserId])
+}

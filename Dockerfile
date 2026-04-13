@@ -1,0 +1,16 @@
+FROM node:20-alpine AS base
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY prisma ./prisma
+RUN npx prisma generate
+
+COPY tsconfig.json .eslintrc.cjs jest.config.ts ./
+COPY src ./src
+
+RUN npm run build
+
+EXPOSE 4000
+CMD ["npm", "run", "start"]
