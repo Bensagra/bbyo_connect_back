@@ -51,6 +51,23 @@ export function createApp() {
   app.use(pinoHttp({ logger }));
   app.use(userRateLimiter);
 
+  app.get("/", (_req, res) => {
+    res.status(200).json({
+      data: {
+        service: "bbyo-connect-api",
+        status: "ok",
+        docs: "/docs",
+        health: "/health",
+      },
+      meta: null,
+      error: null,
+    });
+  });
+
+  app.get("/favicon.ico", (_req, res) => {
+    res.status(204).end();
+  });
+
   app.get("/health", (_req, res) => {
     res.status(200).json({
       data: {
