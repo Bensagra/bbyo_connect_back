@@ -7,7 +7,6 @@ import helmet from "helmet";
 import pinoHttp from "pino-http";
 import swaggerUi from "swagger-ui-express";
 import YAML from "js-yaml";
-import { env } from "./config/env";
 import { logger } from "./config/logger";
 import { errorHandler, notFoundHandler } from "./middlewares/error-handler";
 import { ipRateLimiter, userRateLimiter } from "./middlewares/rate-limit";
@@ -33,13 +32,7 @@ export function createApp() {
 
   app.use(
     cors({
-      origin: (origin, callback) => {
-        if (!origin || env.corsAllowlist.length === 0 || env.corsAllowlist.includes(origin)) {
-          callback(null, true);
-          return;
-        }
-        callback(new Error("CORS origin not allowed"));
-      },
+      origin: true,
       credentials: true,
     }),
   );
