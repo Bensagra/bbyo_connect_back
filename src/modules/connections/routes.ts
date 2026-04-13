@@ -43,6 +43,10 @@ connectionsRouter.get(
   asyncHandler(async (req, res) => {
     const actor = req.authUser!;
     const query = req.query as unknown as z.infer<typeof searchDirectoryQuerySchema>;
+    const parsedLimit = Number.parseInt(String(query.limit ?? 20), 10);
+    const limit = Number.isFinite(parsedLimit)
+      ? Math.min(Math.max(parsedLimit, 1), 50)
+      : 20;
 
     const users = await prisma.user.findMany({
       where: {
@@ -134,7 +138,7 @@ connectionsRouter.get(
       orderBy: {
         createdAt: "desc",
       },
-      take: query.limit,
+      take: limit,
     });
 
     const followMap = new Map<string, FollowStatus>();
@@ -204,7 +208,7 @@ connectionsRouter.get(
       orderBy: {
         name: "asc",
       },
-      take: query.limit,
+      take: limit,
     });
 
     const followedChapterIds = new Set<string>();

@@ -72,7 +72,10 @@ eventsRouter.get(
     const actor = req.authUser!;
     const query = req.query as unknown as z.infer<typeof listEventsQuery>;
 
-    const limit = query.limit;
+    const parsedLimit = Number.parseInt(String(query.limit ?? 30), 10);
+    const limit = Number.isFinite(parsedLimit)
+      ? Math.min(Math.max(parsedLimit, 1), 100)
+      : 30;
     const visibilityIn = actor.role === Role.guest ? [EventVisibility.public] : [EventVisibility.public, EventVisibility.chapter, EventVisibility.region, EventVisibility.private];
 
     try {

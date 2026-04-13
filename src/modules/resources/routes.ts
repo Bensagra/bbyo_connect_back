@@ -33,6 +33,10 @@ resourcesRouter.get(
   asyncHandler(async (req, res) => {
     const actor = req.authUser!;
     const query = req.query as unknown as z.infer<typeof listResourcesQuery>;
+    const parsedLimit = Number.parseInt(String(query.limit ?? 50), 10);
+    const limit = Number.isFinite(parsedLimit)
+      ? Math.min(Math.max(parsedLimit, 1), 100)
+      : 50;
 
     const visibilityConstraint = actor.role === Role.guest ? { in: [Visibility.public, Visibility.global] } : query.visibility ? query.visibility : undefined;
 
@@ -44,12 +48,12 @@ resourcesRouter.get(
           ...(visibilityConstraint ? { visibility: visibilityConstraint } : {}),
         },
         orderBy: { createdAt: "desc" },
-        take: query.limit + 1,
+        take: limit + 1,
         ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
       });
 
-      const hasNextPage = resources.length > query.limit;
-      const sliced = hasNextPage ? resources.slice(0, query.limit) : resources;
+      const hasNextPage = resources.length > limit;
+      const sliced = hasNextPage ? resources.slice(0, limit) : resources;
 
       return ok(res, sliced, {
         hasNextPage,

@@ -145,6 +145,10 @@ adminRouter.get(
   validateQuery(listUsersQuerySchema),
   asyncHandler(async (req, res) => {
     const query = req.query as unknown as z.infer<typeof listUsersQuerySchema>;
+    const parsedLimit = Number.parseInt(String(query.limit ?? 50), 10);
+    const limit = Number.isFinite(parsedLimit)
+      ? Math.min(Math.max(parsedLimit, 1), 100)
+      : 50;
     const andFilters: Record<string, unknown>[] = [];
 
     if (!query.includeDeleted) {
@@ -194,12 +198,12 @@ adminRouter.get(
           },
         },
         orderBy: { createdAt: "desc" },
-        take: query.limit + 1,
+        take: limit + 1,
         ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
       });
 
-      const hasNextPage = users.length > query.limit;
-      const sliced = hasNextPage ? users.slice(0, query.limit) : users;
+      const hasNextPage = users.length > limit;
+      const sliced = hasNextPage ? users.slice(0, limit) : users;
 
       return ok(
         res,
@@ -580,6 +584,10 @@ adminRouter.get(
   validateQuery(listChaptersQuerySchema),
   asyncHandler(async (req, res) => {
     const query = req.query as unknown as z.infer<typeof listChaptersQuerySchema>;
+    const parsedLimit = Number.parseInt(String(query.limit ?? 50), 10);
+    const limit = Number.isFinite(parsedLimit)
+      ? Math.min(Math.max(parsedLimit, 1), 100)
+      : 50;
     const andFilters: Record<string, unknown>[] = [];
 
     if (!query.includeDeleted) {
@@ -620,12 +628,12 @@ adminRouter.get(
           },
         },
         orderBy: { name: "asc" },
-        take: query.limit + 1,
+        take: limit + 1,
         ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
       });
 
-      const hasNextPage = chapters.length > query.limit;
-      const sliced = hasNextPage ? chapters.slice(0, query.limit) : chapters;
+      const hasNextPage = chapters.length > limit;
+      const sliced = hasNextPage ? chapters.slice(0, limit) : chapters;
 
       return ok(res, sliced, {
         hasNextPage,

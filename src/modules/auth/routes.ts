@@ -102,6 +102,10 @@ authRouter.get(
     const query = req.query as unknown as z.infer<
       typeof registrationRegionsQuerySchema
     >;
+    const parsedLimit = Number.parseInt(String(query.limit ?? 50), 10);
+    const limit = Number.isFinite(parsedLimit)
+      ? Math.min(Math.max(parsedLimit, 1), 100)
+      : 50;
 
     const regions = await prisma.region.findMany({
       where: {
@@ -116,7 +120,7 @@ authRouter.get(
           : {}),
       },
       orderBy: { name: "asc" },
-      take: query.limit,
+      take: limit,
       select: {
         id: true,
         name: true,
@@ -153,6 +157,10 @@ authRouter.get(
     const query = req.query as unknown as z.infer<
       typeof registrationChaptersQuerySchema
     >;
+    const parsedLimit = Number.parseInt(String(query.limit ?? 100), 10);
+    const limit = Number.isFinite(parsedLimit)
+      ? Math.min(Math.max(parsedLimit, 1), 100)
+      : 100;
 
     const chapters = await prisma.chapter.findMany({
       where: {
@@ -185,7 +193,7 @@ authRouter.get(
           : {}),
       },
       orderBy: { name: "asc" },
-      take: query.limit,
+      take: limit,
       include: {
         region: {
           select: {

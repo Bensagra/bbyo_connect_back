@@ -30,6 +30,10 @@ chaptersRouter.get(
   validateQuery(listChaptersQuery),
   asyncHandler(async (req, res) => {
     const query = req.query as unknown as z.infer<typeof listChaptersQuery>;
+    const parsedLimit = Number.parseInt(String(query.limit ?? 50), 10);
+    const limit = Number.isFinite(parsedLimit)
+      ? Math.min(Math.max(parsedLimit, 1), 100)
+      : 50;
 
     try {
       const chapters = await prisma.chapter.findMany({
@@ -40,12 +44,12 @@ chaptersRouter.get(
           ...(query.country ? { country: query.country } : {}),
         },
         orderBy: { name: "asc" },
-        take: query.limit + 1,
+        take: limit + 1,
         ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
       });
 
-      const hasNextPage = chapters.length > query.limit;
-      const sliced = hasNextPage ? chapters.slice(0, query.limit) : chapters;
+      const hasNextPage = chapters.length > limit;
+      const sliced = hasNextPage ? chapters.slice(0, limit) : chapters;
 
       return ok(res, sliced, {
         hasNextPage,
