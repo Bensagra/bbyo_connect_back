@@ -203,6 +203,11 @@ enum TravelIntroStatus {
   rejected
 }
 
+enum FollowStatus {
+  pending
+  accepted
+}
+
 model User {
   id                        String                 @id @default(cuid())
   email                     String?                @unique
@@ -210,6 +215,7 @@ model User {
   passwordHash              String?
   role                      Role
   status                    UserStatus             @default(active)
+  isProfilePrivate          Boolean                @default(false)
   lastLoginAt               DateTime?
   createdAt                 DateTime               @default(now())
   updatedAt                 DateTime               @updatedAt
@@ -245,11 +251,30 @@ model User {
   deviceTokens              DeviceToken[]
   auditLogs                 AuditLog[]             @relation("AuditActor")
   travelIntrosRequested     TravelIntro[]          @relation("TravelRequester")
+  followsGiven              UserFollow[]           @relation("FollowActor")
+  followsReceived           UserFollow[]           @relation("FollowTarget")
   blockedBy                 BlockRelation[]        @relation("BlockTarget")
   blocks                    BlockRelation[]        @relation("BlockActor")
 
   @@index([role, status])
   @@index([createdAt])
+}
+
+model UserFollow {
+  id              String       @id @default(cuid())
+  followerUserId  String
+  followingUserId String
+  status          FollowStatus @default(accepted)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  deletedAt       DateTime?
+  acceptedAt      DateTime?
+  followerUser    User         @relation("FollowActor", fields: [followerUserId], references: [id], onDelete: Cascade)
+  followingUser   User         @relation("FollowTarget", fields: [followingUserId], references: [id], onDelete: Cascade)
+
+  @@unique([followerUserId, followingUserId])
+  @@index([followingUserId, status])
+  @@index([followerUserId, status])
 }
 
 model TeenProfile {

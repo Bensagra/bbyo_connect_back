@@ -9,7 +9,7 @@ import { writeAuditLog } from "../../common/audit";
 import { issueTokenPair, revokeRefreshToken, rotateRefreshToken } from "../../common/tokens";
 import { requireAuth } from "../../middlewares/auth";
 import { idempotencyMiddleware, requireIdempotencyKey } from "../../middlewares/idempotency";
-import { validateBody } from "../../middlewares/validate";
+import { validateBody, validateQuery } from "../../middlewares/validate";
 import { prisma } from "../../lib/prisma";
 
 const authRouter = Router();
@@ -19,6 +19,7 @@ const registerSchema = z.object({
   email: z.string().email().optional(),
   memberId: z.string().min(3).max(64),
   password: z.string().min(8).max(128),
+  deviceInfo: z.record(z.string(), z.unknown()).optional(),
   profile: z
     .object({
       fullName: z.string().min(2).optional(),
@@ -36,6 +37,17 @@ const registerSchema = z.object({
       advisorUserId: z.string().optional(),
     })
     .default({ languages: ["en"], interests: [] }),
+});
+
+const registrationRegionsQuerySchema = z.object({
+  search: z.string().trim().min(1).max(80).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
+const registrationChaptersQuerySchema = z.object({
+  regionId: z.string().min(1),
+  search: z.string().trim().min(1).max(80).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(100),
 });
 
 const loginSchema = z.object({
@@ -83,6 +95,121 @@ function generateOneTimeCode() {
   return code;
 }
 
+authRouter.get(
+  "/regions",
+  validateQuery(registrationRegionsQuerySchema),
+  asyncHandler(async (req, res) => {
+    const query = req.query as unknown as z.infer<
+      typeof registrationRegionsQuerySchema
+    >;
+
+    const regions = await prisma.region.findMany({
+      where: {
+        deletedAt: null,
+        ...(query.search
+          ? {
+              name: {
+                contains: query.search,
+                mode: "insensitive",
+              },
+            }
+          : {}),
+      },
+      orderBy: { name: "asc" },
+      take: query.limit,
+      select: {
+        id: true,
+        name: true,
+        countryCode: true,
+        _count: {
+          select: {
+            chapters: {
+              where: {
+                deletedAt: null,
+                isActive: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return ok(
+      res,
+      regions.map((region) => ({
+        id: region.id,
+        name: region.name,
+        countryCode: region.countryCode,
+        activeChapters: region._count.chapters,
+      })),
+    );
+  }),
+);
+
+authRouter.get(
+  "/chapters",
+  validateQuery(registrationChaptersQuerySchema),
+  asyncHandler(async (req, res) => {
+    const query = req.query as unknown as z.infer<
+      typeof registrationChaptersQuerySchema
+    >;
+
+    const chapters = await prisma.chapter.findMany({
+      where: {
+        deletedAt: null,
+        isActive: true,
+        regionId: query.regionId,
+        ...(query.search
+          ? {
+              OR: [
+                {
+                  name: {
+                    contains: query.search,
+                    mode: "insensitive",
+                  },
+                },
+                {
+                  city: {
+                    contains: query.search,
+                    mode: "insensitive",
+                  },
+                },
+                {
+                  country: {
+                    contains: query.search,
+                    mode: "insensitive",
+                  },
+                },
+              ],
+            }
+          : {}),
+      },
+      orderBy: { name: "asc" },
+      take: query.limit,
+      include: {
+        region: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    return ok(
+      res,
+      chapters.map((chapter) => ({
+        id: chapter.id,
+        name: chapter.name,
+        city: chapter.city,
+        country: chapter.country,
+        regionId: chapter.regionId,
+        regionName: chapter.region.name,
+      })),
+    );
+  }),
+);
+
 authRouter.post(
   "/register",
   requireIdempotencyKey,
@@ -104,6 +231,58 @@ authRouter.post(
     const passwordHash = await argon2.hash(body.password);
 
     if (body.accountType === "teen") {
+      if (!body.profile.regionId || !body.profile.chapterId) {
+        return fail(
+          res,
+          400,
+          "REGION_AND_CHAPTER_REQUIRED",
+          "regionId and chapterId are required for teen signup",
+        );
+      }
+
+      const [region, chapter] = await Promise.all([
+        prisma.region.findFirst({
+          where: {
+            id: body.profile.regionId,
+            deletedAt: null,
+          },
+          select: { id: true },
+        }),
+        prisma.chapter.findFirst({
+          where: {
+            id: body.profile.chapterId,
+            deletedAt: null,
+            isActive: true,
+          },
+          select: {
+            id: true,
+            regionId: true,
+          },
+        }),
+      ]);
+
+      if (!region) {
+        return fail(res, 400, "REGION_NOT_FOUND", "Selected region is invalid");
+      }
+
+      if (!chapter) {
+        return fail(
+          res,
+          400,
+          "CHAPTER_NOT_FOUND",
+          "Selected chapter is invalid or unavailable",
+        );
+      }
+
+      if (chapter.regionId !== body.profile.regionId) {
+        return fail(
+          res,
+          400,
+          "CHAPTER_REGION_MISMATCH",
+          "Selected chapter does not belong to the selected region",
+        );
+      }
+
       const user = await prisma.user.create({
         data: {
           email: body.email,
@@ -156,6 +335,26 @@ authRouter.post(
 
     if (!body.profile.chapterId || !body.profile.displayName) {
       return fail(res, 400, "CHAPTER_PROFILE_REQUIRED", "chapterId and displayName are required for chapter signup");
+    }
+
+    const selectedChapter = await prisma.chapter.findFirst({
+      where: {
+        id: body.profile.chapterId,
+        deletedAt: null,
+        isActive: true,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!selectedChapter) {
+      return fail(
+        res,
+        400,
+        "CHAPTER_NOT_FOUND",
+        "Selected chapter is invalid or unavailable",
+      );
     }
 
     const user = await prisma.user.create({

@@ -24,6 +24,7 @@ import { reportsRouter } from "./modules/reports/routes";
 import { notificationsRouter } from "./modules/notifications/routes";
 import { uploadsRouter } from "./modules/uploads/routes";
 import { adminRouter } from "./modules/admin/routes";
+import { connectionsRouter } from "./modules/connections/routes";
 
 export function createApp() {
   const app = express();
@@ -88,6 +89,7 @@ export function createApp() {
   app.use("/notifications", notificationsRouter);
   app.use("/uploads", uploadsRouter);
   app.use("/admin", adminRouter);
+  app.use("/connections", connectionsRouter);
 
   try {
     const openApiPath = path.join(process.cwd(), "src/docs/openapi.yaml");
