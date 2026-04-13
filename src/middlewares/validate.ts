@@ -27,7 +27,18 @@ export function validateBody<T extends ZodTypeAny>(schema: T) {
 export function validateQuery<T>(schema: ZodSchema<T>) {
   return (req: Request, res: Response, next: NextFunction) => {
     try {
-      req.query = schema.parse(req.query) as Request["query"];
+      const parsed = schema.parse(req.query);
+      const mutableQuery = req.query as Record<string, unknown>;
+
+      if (mutableQuery && typeof mutableQuery === "object") {
+        for (const key of Object.keys(mutableQuery)) {
+          delete mutableQuery[key];
+        }
+        if (parsed && typeof parsed === "object") {
+          Object.assign(mutableQuery, parsed as Record<string, unknown>);
+        }
+      }
+
       return next();
     } catch (error) {
       if (error instanceof ZodError) {

@@ -1,4 +1,5 @@
 import argon2 from "argon2";
+import { randomInt } from "crypto";
 import { Role, UserStatus } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
@@ -56,6 +57,31 @@ const refreshSchema = z.object({
 const logoutSchema = z.object({
   refreshToken: z.string().min(20),
 });
+
+const issueChapterOneTimeCodeSchema = z.object({
+  targetMemberIdOrEmail: z.string().min(3),
+  expiresInMinutes: z.coerce.number().int().min(1).max(60).default(15),
+});
+
+const loginWithChapterCodeSchema = z.object({
+  memberIdOrEmail: z.string().min(3),
+  oneTimeCode: z.string().min(6).max(16),
+  deviceInfo: z.record(z.string(), z.unknown()).optional(),
+});
+
+const chapterOneTimeIssuerRoles: Role[] = [Role.chapter_verified, Role.advisor, Role.moderator, Role.regional_admin, Role.global_admin];
+const chapterOneTimeTargetRoles: Role[] = [Role.teen_pending, Role.teen_verified];
+const chapterOneTimeCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const chapterOneTimeCodeLength = 8;
+const chapterOneTimeCodeMaxAttempts = 5;
+
+function generateOneTimeCode() {
+  let code = "";
+  for (let index = 0; index < chapterOneTimeCodeLength; index += 1) {
+    code += chapterOneTimeCodeAlphabet[randomInt(0, chapterOneTimeCodeAlphabet.length)];
+  }
+  return code;
+}
 
 authRouter.post(
   "/register",
@@ -237,6 +263,244 @@ authRouter.post(
     });
 
     return ok(res, { user, tokens });
+  }),
+);
+
+authRouter.post(
+  "/chapter-one-time-codes",
+  requireAuth,
+  validateBody(issueChapterOneTimeCodeSchema),
+  asyncHandler(async (req, res) => {
+    const actor = req.authUser;
+    if (!actor) {
+      return fail(res, 401, "AUTH_REQUIRED", "Authentication is required");
+    }
+
+    if (!chapterOneTimeIssuerRoles.includes(actor.role)) {
+      return fail(res, 403, "ROLE_RESTRICTED", "Your role cannot issue one-time login codes");
+    }
+
+    const body = req.body as z.infer<typeof issueChapterOneTimeCodeSchema>;
+    const target = await prisma.user.findFirst({
+      where: {
+        OR: [{ memberId: body.targetMemberIdOrEmail }, { email: body.targetMemberIdOrEmail }],
+        deletedAt: null,
+      },
+      include: {
+        teenProfile: {
+          select: { chapterId: true },
+        },
+      },
+    });
+
+    if (!target) {
+      return fail(res, 404, "USER_NOT_FOUND", "User not found");
+    }
+
+    if (!chapterOneTimeTargetRoles.includes(target.role)) {
+      return fail(res, 403, "TARGET_ROLE_NOT_ELIGIBLE", "Only teen accounts can use chapter one-time login");
+    }
+
+    if (["suspended", "banned", "deleted"].includes(target.status)) {
+      return fail(res, 403, "TARGET_ACCOUNT_RESTRICTED", "Target account is restricted");
+    }
+
+    const targetChapterId = target.teenProfile?.chapterId;
+    if (!targetChapterId) {
+      return fail(res, 400, "TARGET_CHAPTER_REQUIRED", "Target user must belong to a chapter");
+    }
+
+    if (actor.role === Role.chapter_verified) {
+      const chapterProfile = await prisma.chapterProfile.findUnique({
+        where: { userId: actor.id },
+        select: { chapterId: true },
+      });
+
+      if (!chapterProfile) {
+        return fail(res, 400, "CHAPTER_PROFILE_MISSING", "Chapter profile required to issue one-time login codes");
+      }
+
+      if (chapterProfile.chapterId !== targetChapterId) {
+        return fail(res, 403, "TARGET_NOT_IN_CHAPTER", "Target user is not part of your chapter");
+      }
+    }
+
+    const chapter = await prisma.chapter.findFirst({
+      where: {
+        id: targetChapterId,
+        deletedAt: null,
+        isActive: true,
+      },
+      select: { id: true },
+    });
+
+    if (!chapter) {
+      return fail(res, 404, "CHAPTER_NOT_FOUND", "Chapter not found");
+    }
+
+    await prisma.chapterOneTimeAccessCode.updateMany({
+      where: {
+        chapterId: chapter.id,
+        targetUserId: target.id,
+        usedAt: null,
+        invalidatedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      data: {
+        invalidatedAt: new Date(),
+      },
+    });
+
+    const oneTimeCode = generateOneTimeCode();
+    const expiresAt = new Date(Date.now() + body.expiresInMinutes * 60 * 1000);
+    const codeRecord = await prisma.chapterOneTimeAccessCode.create({
+      data: {
+        chapterId: chapter.id,
+        targetUserId: target.id,
+        issuedByUserId: actor.id,
+        codeHash: await argon2.hash(oneTimeCode),
+        codeHint: oneTimeCode.slice(-2),
+        maxAttempts: chapterOneTimeCodeMaxAttempts,
+        expiresAt,
+      },
+    });
+
+    await writeAuditLog({
+      actorId: actor.id,
+      action: "auth.chapter_code.issued",
+      entityType: "ChapterOneTimeAccessCode",
+      entityId: codeRecord.id,
+      metadataJson: {
+        targetUserId: target.id,
+        chapterId: chapter.id,
+        expiresAt: codeRecord.expiresAt,
+      },
+    });
+
+    return ok(
+      res,
+      {
+        oneTimeCode,
+        expiresAt: codeRecord.expiresAt,
+        chapterId: chapter.id,
+        targetUser: {
+          id: target.id,
+          memberId: target.memberId,
+          email: target.email,
+          role: target.role,
+          status: target.status,
+        },
+        maxAttempts: codeRecord.maxAttempts,
+      },
+      {
+        oneTimeCode: true,
+      },
+      201,
+    );
+  }),
+);
+
+authRouter.post(
+  "/login/chapter-code",
+  requireIdempotencyKey,
+  idempotencyMiddleware,
+  validateBody(loginWithChapterCodeSchema),
+  asyncHandler(async (req, res) => {
+    const body = req.body as z.infer<typeof loginWithChapterCodeSchema>;
+    const target = await prisma.user.findFirst({
+      where: {
+        OR: [{ memberId: body.memberIdOrEmail }, { email: body.memberIdOrEmail }],
+        deletedAt: null,
+      },
+      include: {
+        teenProfile: {
+          select: { chapterId: true },
+        },
+      },
+    });
+
+    if (!target || !chapterOneTimeTargetRoles.includes(target.role) || !target.teenProfile?.chapterId) {
+      return fail(res, 401, "INVALID_CHAPTER_ONE_TIME_CODE", "One-time code is invalid or expired");
+    }
+
+    if (["suspended", "banned", "deleted"].includes(target.status)) {
+      return fail(res, 403, "ACCOUNT_RESTRICTED", "Your account is restricted");
+    }
+
+    const activeCode = await prisma.chapterOneTimeAccessCode.findFirst({
+      where: {
+        chapterId: target.teenProfile.chapterId,
+        targetUserId: target.id,
+        usedAt: null,
+        invalidatedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!activeCode) {
+      return fail(res, 401, "INVALID_CHAPTER_ONE_TIME_CODE", "One-time code is invalid or expired");
+    }
+
+    const normalizedCode = body.oneTimeCode.trim().toUpperCase();
+    const codeOk = await argon2.verify(activeCode.codeHash, normalizedCode);
+
+    if (!codeOk) {
+      const attempted = await prisma.chapterOneTimeAccessCode.update({
+        where: { id: activeCode.id },
+        data: { attempts: { increment: 1 } },
+        select: { attempts: true, maxAttempts: true },
+      });
+
+      if (attempted.attempts >= attempted.maxAttempts) {
+        await prisma.chapterOneTimeAccessCode.update({
+          where: { id: activeCode.id },
+          data: { invalidatedAt: new Date() },
+        });
+      }
+
+      return fail(res, 401, "INVALID_CHAPTER_ONE_TIME_CODE", "One-time code is invalid or expired");
+    }
+
+    await prisma.chapterOneTimeAccessCode.update({
+      where: { id: activeCode.id },
+      data: {
+        usedAt: new Date(),
+      },
+    });
+
+    await prisma.user.update({
+      where: { id: target.id },
+      data: { lastLoginAt: new Date() },
+    });
+
+    const tokens = await issueTokenPair(
+      {
+        id: target.id,
+        role: target.role,
+        status: target.status,
+      },
+      { deviceInfo: body.deviceInfo, ipAddress: req.ip },
+    );
+
+    await writeAuditLog({
+      actorId: target.id,
+      action: "auth.login.chapter_code",
+      entityType: "User",
+      entityId: target.id,
+      metadataJson: {
+        codeId: activeCode.id,
+        chapterId: activeCode.chapterId,
+        issuedByUserId: activeCode.issuedByUserId,
+      },
+    });
+
+    return ok(res, {
+      user: target,
+      tokens,
+      authMethod: "chapter_one_time_code",
+      codeIssuedByUserId: activeCode.issuedByUserId,
+    });
   }),
 );
 

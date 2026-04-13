@@ -8,7 +8,8 @@ Required:
 Optional with defaults:
 - `PORT` (default: `4000`)
 - `NODE_ENV` (default: `development`)
-- `REDIS_URL` (optional)
+- `REDIS_ENABLED` (default: `false`)
+- `REDIS_URL` (required only if `REDIS_ENABLED=true`)
 - `ACCESS_TOKEN_TTL` (default: `15m`)
 - `REFRESH_TOKEN_TTL_DAYS` (default: `30`)
 - `JWT_ISSUER` (default: `bbyo-connect-api`)

@@ -22,12 +22,23 @@ function asNumber(name: string, fallback: number): number {
   return value;
 }
 
+function asBoolean(name: string, fallback: boolean): boolean {
+  const raw = process.env[name];
+  if (!raw) {
+    return fallback;
+  }
+
+  const normalized = raw.trim().toLowerCase();
+  return ["1", "true", "yes", "on"].includes(normalized);
+}
+
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? "development",
   isProduction: (process.env.NODE_ENV ?? "development") === "production",
   port: asNumber("PORT", 4000),
   databaseUrl: required("DATABASE_URL"),
-  redisUrl: process.env.REDIS_URL ?? "",
+  redisEnabled: asBoolean("REDIS_ENABLED", false),
+  redisUrl: (process.env.REDIS_URL ?? "").trim(),
   accessTokenSecret: required("ACCESS_TOKEN_SECRET"),
   refreshTokenSecret: required("REFRESH_TOKEN_SECRET"),
   jwtIssuer: process.env.JWT_ISSUER ?? "bbyo-connect-api",

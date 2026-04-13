@@ -23,7 +23,8 @@ Recomendadas:
 - RATE_LIMIT_MAX_USER
 - IDEMPOTENCY_TTL_SECONDS
 - UPLOAD_SIGNING_SECRET
-- REDIS_URL (si usas redis)
+- REDIS_ENABLED (solo si usas redis; en caso contrario dejar `false`)
+- REDIS_URL (solo si usas redis)
 - BANNED_WORDS
 
 ## Deploy

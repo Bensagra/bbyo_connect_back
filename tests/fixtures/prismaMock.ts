@@ -5,6 +5,7 @@ export const prismaMock = {
     findFirst: jest.fn(),
     findUnique: jest.fn(),
     findMany: jest.fn(),
+    count: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
     updateMany: jest.fn(),
@@ -15,7 +16,15 @@ export const prismaMock = {
   },
   chapterProfile: {
     findUnique: jest.fn(),
+    findMany: jest.fn(),
     create: jest.fn(),
+  },
+  chapter: {
+    findFirst: jest.fn(),
+    findUnique: jest.fn(),
+    findMany: jest.fn(),
+    count: jest.fn(),
+    update: jest.fn(),
   },
   verificationVouch: {
     findFirst: jest.fn(),
@@ -32,6 +41,13 @@ export const prismaMock = {
   sessionRefreshToken: {
     create: jest.fn(),
     findUnique: jest.fn(),
+    count: jest.fn(),
+    update: jest.fn(),
+    updateMany: jest.fn(),
+  },
+  chapterOneTimeAccessCode: {
+    findFirst: jest.fn(),
+    create: jest.fn(),
     update: jest.fn(),
     updateMany: jest.fn(),
   },

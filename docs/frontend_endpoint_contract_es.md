@@ -19,6 +19,7 @@
 - Idempotency-Key obligatorio en:
   - POST /auth/register
   - POST /auth/login
+  - POST /auth/login/chapter-code
   - POST /auth/guest
   - POST /auth/refresh
   - POST /verification/vouches
@@ -68,6 +69,38 @@
     - data:
       - user
       - tokens (access/refresh)
+
+- POST /auth/chapter-one-time-codes
+  - Recibe:
+    - Auth (chapter_verified o staff: advisor | moderator | regional_admin | global_admin)
+    - Body:
+      - targetMemberIdOrEmail
+      - expiresInMinutes: opcional (1-60, default 15)
+  - Devuelve:
+    - 201
+    - data:
+      - oneTimeCode (se muestra una sola vez)
+      - expiresAt
+      - chapterId
+      - targetUser: id, memberId, email, role, status
+      - maxAttempts
+    - meta:
+      - oneTimeCode: true
+
+- POST /auth/login/chapter-code
+  - Recibe:
+    - Header: Idempotency-Key
+    - Body:
+      - memberIdOrEmail
+      - oneTimeCode
+      - deviceInfo: opcional
+  - Devuelve:
+    - 200
+    - data:
+      - user
+      - tokens (access/refresh)
+      - authMethod: chapter_one_time_code
+      - codeIssuedByUserId
 
 - POST /auth/guest
   - Recibe:
@@ -720,6 +753,7 @@
   - AUTH_REQUIRED
   - INVALID_TOKEN
   - INVALID_SESSION
+  - INVALID_CHAPTER_ONE_TIME_CODE
 - 403:
   - FORBIDDEN
   - ROLE_RESTRICTED
@@ -727,6 +761,15 @@
   - GUEST_EVENT_RESTRICTED
   - PENDING_PRIVATE_CHAT_RESTRICTED
   - PENDING_USER_RESTRICTED
+  - TARGET_ROLE_NOT_ELIGIBLE
+  - TARGET_ACCOUNT_RESTRICTED
+  - TARGET_NOT_IN_CHAPTER
+  - SELF_ROLE_CHANGE_FORBIDDEN
+- 400:
+  - TARGET_CHAPTER_REQUIRED
+  - NOTHING_TO_UPDATE
+  - TEEN_PROFILE_REQUIRED
+  - CHAPTER_PROFILE_REQUIRED
 - 404:
   - *_NOT_FOUND
 - 409:
@@ -734,6 +777,8 @@
   - VOUCH_ALREADY_EXISTS
   - REQUEST_ALREADY_PENDING
   - REQUEST_ALREADY_DECIDED
+  - USER_NOT_PENDING_FOR_ADMISSION
+  - USER_DELETED
 - 422:
   - CONTENT_FLAGGED (details.blockedWord)
 - 429:
@@ -743,3 +788,185 @@
 ## 18) Nota tecnica para frontend
 - Actualmente algunos flujos de auth devuelven el objeto user completo desde Prisma.
 - Mientras se sanitiza backend, frontend debe ignorar cualquier campo sensible (ejemplo: passwordHash) y usar solo campos publicos necesarios.
+
+## 19) Admin Panel (control de usuarios y chapters)
+
+- GET /admin/overview
+  - Recibe:
+    - Auth staff: advisor | moderator | regional_admin | global_admin
+  - Devuelve:
+    - 200
+    - data:
+      - users:
+        - total
+        - active
+        - pending
+        - suspended
+        - banned
+        - pendingTeenAdmissions
+        - pendingChapterAdmissions
+      - chapters:
+        - total
+        - active
+        - inactive
+
+- GET /admin/users
+  - Recibe:
+    - Auth staff
+    - Query:
+      - cursor?: opcional
+      - limit?: opcional (1..100)
+      - search?: opcional (memberId o email)
+      - role?: opcional (Role)
+      - status?: opcional (UserStatus)
+      - chapterId?: opcional
+      - includeDeleted?: opcional (default false)
+  - Devuelve:
+    - 200
+    - data: lista de usuarios sanitizados (sin passwordHash) + teenProfile/chapterProfile resumido
+    - meta: hasNextPage, nextCursor
+
+- GET /admin/users/:id
+  - Recibe:
+    - Auth staff
+    - Params:
+      - id
+  - Devuelve:
+    - 200
+    - data:
+      - user sanitizado
+      - teenProfile y chapterProfile completos (si aplica)
+      - activeSessionCount
+
+- PATCH /admin/users/:id/admit
+  - Recibe:
+    - Auth staff operador: moderator | regional_admin | global_admin
+    - Params:
+      - id
+    - Body:
+      - notes?: opcional
+  - Efecto negocio:
+    - teen_pending -> teen_verified + active
+    - chapter_pending -> chapter_verified + active
+    - si hay ChapterApprovalRequest pendiente, la marca aprobada
+  - Devuelve:
+    - 200
+    - data:
+      - admitted: true
+      - user actualizado
+      - previousRole
+      - previousStatus
+      - chapterApprovalRequestId: id o null
+
+- PATCH /admin/users/:id/reject
+  - Recibe:
+    - Auth staff operador
+    - Params:
+      - id
+    - Body:
+      - reason: requerido
+      - status?: pending | suspended | banned (default pending)
+  - Efecto negocio:
+    - solo aplica a teen_pending o chapter_pending
+    - si hay ChapterApprovalRequest pendiente, la marca rechazada
+  - Devuelve:
+    - 200
+    - data:
+      - rejected: true
+      - user actualizado
+      - reason
+      - chapterApprovalRequestId: id o null
+
+- PATCH /admin/users/:id/status
+  - Recibe:
+    - Auth staff operador
+    - Params:
+      - id
+    - Body:
+      - status: active | pending | suspended | banned
+      - reason?: opcional
+  - Devuelve:
+    - 200
+    - data:
+      - user actualizado
+      - previousStatus
+      - reason
+
+- PATCH /admin/users/:id/role
+  - Recibe:
+    - Auth solo global_admin
+    - Params:
+      - id
+    - Body:
+      - role: cualquier Role
+      - reason?: opcional
+  - Validaciones:
+    - no permite auto-democión de global_admin
+    - para teen_verified requiere teenProfile
+    - para chapter_verified requiere chapterProfile
+  - Devuelve:
+    - 200
+    - data:
+      - user actualizado
+      - previousRole
+      - reason
+
+- GET /admin/chapters
+  - Recibe:
+    - Auth staff
+    - Query:
+      - cursor?: opcional
+      - limit?: opcional (1..100)
+      - search?: opcional (name/city/country)
+      - regionId?: opcional
+      - country?: opcional
+      - isActive?: opcional
+      - includeDeleted?: opcional (default false)
+  - Devuelve:
+    - 200
+    - data: Chapter[] con region y _count
+    - meta: hasNextPage, nextCursor
+
+- GET /admin/chapters/:id
+  - Recibe:
+    - Auth staff
+    - Params:
+      - id
+  - Devuelve:
+    - 200
+    - data:
+      - chapter completo con region y _count
+      - pendingChapterUsers
+      - pendingTeenUsers
+
+- PATCH /admin/chapters/:id
+  - Recibe:
+    - Auth staff operador
+    - Params:
+      - id
+    - Body (al menos 1 campo):
+      - name?
+      - regionId?
+      - city?
+      - country?
+      - lat?
+      - lng?
+      - isActive?
+  - Devuelve:
+    - 200
+    - data: chapter actualizado
+
+- PATCH /admin/chapters/:id/admit
+  - Recibe:
+    - Auth staff operador
+    - Params:
+      - id
+    - Body:
+      - notes?: opcional
+  - Efecto negocio:
+    - fuerza isActive=true para admitir chapter desde panel
+  - Devuelve:
+    - 200
+    - data:
+      - admitted: true
+      - chapter actualizado

@@ -218,6 +218,8 @@ model User {
   chapterProfile            ChapterProfile?
   chapterAdvisedProfiles    ChapterProfile[]        @relation("ChapterAdvisor")
   sessionRefreshTokens      SessionRefreshToken[]
+  chapterOneTimeCodesIssued ChapterOneTimeAccessCode[] @relation("ChapterOneTimeCodeIssuer")
+  chapterOneTimeCodesTarget ChapterOneTimeAccessCode[] @relation("ChapterOneTimeCodeTarget")
   authoredPosts             Post[]                 @relation("PostAuthorUser")
   chapterPosts              Post[]                 @relation("PostChapterUser")
   postReactions             PostReaction[]
@@ -321,6 +323,7 @@ model Chapter {
   events        Event[]
   projects      CreativeProject[]
   travelIntros  TravelIntro[]
+  oneTimeCodes  ChapterOneTimeAccessCode[]
   leaderboard   LeaderboardSnapshot[]
 
   @@index([regionId, isActive])
@@ -372,6 +375,30 @@ model SessionRefreshToken {
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expiresAt])
+}
+
+model ChapterOneTimeAccessCode {
+  id            String   @id @default(cuid())
+  chapterId     String
+  targetUserId  String
+  issuedByUserId String
+  codeHash      String
+  codeHint      String
+  attempts      Int      @default(0)
+  maxAttempts   Int      @default(5)
+  expiresAt     DateTime
+  usedAt        DateTime?
+  invalidatedAt DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  chapter       Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  targetUser    User     @relation("ChapterOneTimeCodeTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+  issuedByUser  User     @relation("ChapterOneTimeCodeIssuer", fields: [issuedByUserId], references: [id], onDelete: Cascade)
+
+  @@index([chapterId, createdAt])
+  @@index([targetUserId, expiresAt])
+  @@index([issuedByUserId, createdAt])
+  @@index([usedAt, invalidatedAt])
 }
 
 model Post {

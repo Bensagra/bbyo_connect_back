@@ -17,6 +17,7 @@ async function bootstrap() {
       logger.info("Redis connected");
     } catch (error) {
       logger.warn({ err: error }, "Redis unavailable, running without Redis-backed features");
+      redis.disconnect();
     }
   }
 
@@ -29,7 +30,11 @@ async function bootstrap() {
     logger.info("Shutting down API");
     await prisma.$disconnect();
     if (redis) {
-      await redis.quit();
+      try {
+        await redis.quit();
+      } catch {
+        redis.disconnect();
+      }
     }
     server.close(() => process.exit(0));
   };
