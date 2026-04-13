@@ -19,6 +19,10 @@ const followParamsSchema = z.object({
   userId: z.string().min(1),
 });
 
+const chapterFollowParamsSchema = z.object({
+  chapterId: z.string().min(1),
+});
+
 const followRequestParamsSchema = z.object({
   followId: z.string().min(1),
 });
@@ -203,6 +207,26 @@ connectionsRouter.get(
       take: query.limit,
     });
 
+    const followedChapterIds = new Set<string>();
+    if (chapters.length > 0) {
+      const chapterFollows = await prisma.chapterFollow.findMany({
+        where: {
+          userId: actor.id,
+          chapterId: {
+            in: chapters.map((chapter) => chapter.id),
+          },
+          deletedAt: null,
+        },
+        select: {
+          chapterId: true,
+        },
+      });
+
+      for (const follow of chapterFollows) {
+        followedChapterIds.add(follow.chapterId);
+      }
+    }
+
     return ok(res, {
       users: users.map((user) => {
         const teenProfile = user.teenProfile;
@@ -243,7 +267,82 @@ connectionsRouter.get(
         country: chapter.country,
         regionId: chapter.regionId,
         regionName: chapter.region.name,
+        isFollowing: followedChapterIds.has(chapter.id),
       })),
+    });
+  }),
+);
+
+connectionsRouter.post(
+  "/chapters/:chapterId/follow",
+  requireAuth,
+  denyRoles([Role.guest]),
+  validateParams(chapterFollowParamsSchema),
+  asyncHandler(async (req, res) => {
+    const actor = req.authUser!;
+    const { chapterId } = req.params as z.infer<typeof chapterFollowParamsSchema>;
+
+    const chapter = await prisma.chapter.findFirst({
+      where: {
+        id: chapterId,
+        deletedAt: null,
+        isActive: true,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!chapter) {
+      return fail(res, 404, "CHAPTER_NOT_FOUND", "Chapter not found");
+    }
+
+    await prisma.chapterFollow.upsert({
+      where: {
+        userId_chapterId: {
+          userId: actor.id,
+          chapterId,
+        },
+      },
+      create: {
+        userId: actor.id,
+        chapterId,
+      },
+      update: {
+        deletedAt: null,
+      },
+    });
+
+    return ok(res, {
+      chapterId,
+      isFollowing: true,
+    });
+  }),
+);
+
+connectionsRouter.delete(
+  "/chapters/:chapterId/follow",
+  requireAuth,
+  denyRoles([Role.guest]),
+  validateParams(chapterFollowParamsSchema),
+  asyncHandler(async (req, res) => {
+    const actor = req.authUser!;
+    const { chapterId } = req.params as z.infer<typeof chapterFollowParamsSchema>;
+
+    await prisma.chapterFollow.updateMany({
+      where: {
+        userId: actor.id,
+        chapterId,
+        deletedAt: null,
+      },
+      data: {
+        deletedAt: new Date(),
+      },
+    });
+
+    return ok(res, {
+      chapterId,
+      isFollowing: false,
     });
   }),
 );

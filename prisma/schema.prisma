@@ -253,6 +253,7 @@ model User {
   travelIntrosRequested     TravelIntro[]          @relation("TravelRequester")
   followsGiven              UserFollow[]           @relation("FollowActor")
   followsReceived           UserFollow[]           @relation("FollowTarget")
+  chapterFollows            ChapterFollow[]
   blockedBy                 BlockRelation[]        @relation("BlockTarget")
   blocks                    BlockRelation[]        @relation("BlockActor")
 
@@ -275,6 +276,21 @@ model UserFollow {
   @@unique([followerUserId, followingUserId])
   @@index([followingUserId, status])
   @@index([followerUserId, status])
+}
+
+model ChapterFollow {
+  id         String   @id @default(cuid())
+  userId     String
+  chapterId  String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  deletedAt  DateTime?
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chapter    Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, chapterId])
+  @@index([chapterId])
+  @@index([userId])
 }
 
 model TeenProfile {
@@ -350,6 +366,7 @@ model Chapter {
   travelIntros  TravelIntro[]
   oneTimeCodes  ChapterOneTimeAccessCode[]
   leaderboard   LeaderboardSnapshot[]
+  followers     ChapterFollow[]
 
   @@index([regionId, isActive])
   @@index([city, country])
