@@ -3,6 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { ok, fail } from "../../common/api-response";
 import { asyncHandler } from "../../common/async-handler";
+import { logger } from "../../config/logger";
 import { requireAuth } from "../../middlewares/auth";
 import { allowRoles } from "../../middlewares/rbac";
 import { validateBody, validateQuery } from "../../middlewares/validate";
@@ -35,24 +36,35 @@ resourcesRouter.get(
 
     const visibilityConstraint = actor.role === Role.guest ? { in: [Visibility.public, Visibility.global] } : query.visibility ? query.visibility : undefined;
 
-    const resources = await prisma.resource.findMany({
-      where: {
-        deletedAt: null,
-        ...(query.language ? { language: query.language } : {}),
-        ...(visibilityConstraint ? { visibility: visibilityConstraint } : {}),
-      },
-      orderBy: { createdAt: "desc" },
-      take: query.limit + 1,
-      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
-    });
+    try {
+      const resources = await prisma.resource.findMany({
+        where: {
+          deletedAt: null,
+          ...(query.language ? { language: query.language } : {}),
+          ...(visibilityConstraint ? { visibility: visibilityConstraint } : {}),
+        },
+        orderBy: { createdAt: "desc" },
+        take: query.limit + 1,
+        ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+      });
 
-    const hasNextPage = resources.length > query.limit;
-    const sliced = hasNextPage ? resources.slice(0, query.limit) : resources;
+      const hasNextPage = resources.length > query.limit;
+      const sliced = hasNextPage ? resources.slice(0, query.limit) : resources;
 
-    return ok(res, sliced, {
-      hasNextPage,
-      nextCursor: hasNextPage ? sliced[sliced.length - 1]?.id : null,
-    });
+      return ok(res, sliced, {
+        hasNextPage,
+        nextCursor: hasNextPage ? sliced[sliced.length - 1]?.id : null,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "resources.list failed");
+
+      // Avoid breaking Home/Profile screens if resources dataset is temporarily unavailable.
+      return ok(res, [], {
+        hasNextPage: false,
+        nextCursor: null,
+        degraded: true,
+      });
+    }
   }),
 );
 
