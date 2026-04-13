@@ -77,6 +77,38 @@ feedRouter.get(
     const posts = await prisma.post.findMany({
       where,
       include: {
+        authorUser: {
+          select: {
+            memberId: true,
+            teenProfile: {
+              select: {
+                fullName: true,
+                avatarUrl: true,
+              },
+            },
+            chapterProfile: {
+              select: {
+                displayName: true,
+              },
+            },
+          },
+        },
+        chapterUser: {
+          select: {
+            memberId: true,
+            teenProfile: {
+              select: {
+                fullName: true,
+                avatarUrl: true,
+              },
+            },
+            chapterProfile: {
+              select: {
+                displayName: true,
+              },
+            },
+          },
+        },
         media: true,
         reactions: true,
         comments: {
@@ -133,7 +165,43 @@ feedRouter.post(
           })),
         },
       },
-      include: { media: true, reactions: true, comments: true },
+      include: {
+        authorUser: {
+          select: {
+            memberId: true,
+            teenProfile: {
+              select: {
+                fullName: true,
+                avatarUrl: true,
+              },
+            },
+            chapterProfile: {
+              select: {
+                displayName: true,
+              },
+            },
+          },
+        },
+        chapterUser: {
+          select: {
+            memberId: true,
+            teenProfile: {
+              select: {
+                fullName: true,
+                avatarUrl: true,
+              },
+            },
+            chapterProfile: {
+              select: {
+                displayName: true,
+              },
+            },
+          },
+        },
+        media: true,
+        reactions: true,
+        comments: true,
+      },
     });
 
     return ok(res, post, undefined, 201);
@@ -152,6 +220,38 @@ feedRouter.get(
         deletedAt: null,
       },
       include: {
+        authorUser: {
+          select: {
+            memberId: true,
+            teenProfile: {
+              select: {
+                fullName: true,
+                avatarUrl: true,
+              },
+            },
+            chapterProfile: {
+              select: {
+                displayName: true,
+              },
+            },
+          },
+        },
+        chapterUser: {
+          select: {
+            memberId: true,
+            teenProfile: {
+              select: {
+                fullName: true,
+                avatarUrl: true,
+              },
+            },
+            chapterProfile: {
+              select: {
+                displayName: true,
+              },
+            },
+          },
+        },
         media: true,
         reactions: true,
         comments: {
@@ -204,7 +304,43 @@ feedRouter.patch(
         category: body.category,
         visibility: body.visibility,
       },
-      include: { media: true, reactions: true, comments: true },
+      include: {
+        authorUser: {
+          select: {
+            memberId: true,
+            teenProfile: {
+              select: {
+                fullName: true,
+                avatarUrl: true,
+              },
+            },
+            chapterProfile: {
+              select: {
+                displayName: true,
+              },
+            },
+          },
+        },
+        chapterUser: {
+          select: {
+            memberId: true,
+            teenProfile: {
+              select: {
+                fullName: true,
+                avatarUrl: true,
+              },
+            },
+            chapterProfile: {
+              select: {
+                displayName: true,
+              },
+            },
+          },
+        },
+        media: true,
+        reactions: true,
+        comments: true,
+      },
     });
 
     return ok(res, updated);

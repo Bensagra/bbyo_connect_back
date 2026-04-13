@@ -30,6 +30,22 @@ storiesRouter.get(
         expiresAt: { gt: new Date() },
       },
       include: {
+        author: {
+          select: {
+            memberId: true,
+            teenProfile: {
+              select: {
+                fullName: true,
+                avatarUrl: true,
+              },
+            },
+            chapterProfile: {
+              select: {
+                displayName: true,
+              },
+            },
+          },
+        },
         views: true,
       },
       orderBy: { createdAt: "desc" },
@@ -55,6 +71,24 @@ storiesRouter.post(
         authorId: actor.id,
         mediaUrl: body.mediaUrl,
         expiresAt,
+      },
+      include: {
+        author: {
+          select: {
+            memberId: true,
+            teenProfile: {
+              select: {
+                fullName: true,
+                avatarUrl: true,
+              },
+            },
+            chapterProfile: {
+              select: {
+                displayName: true,
+              },
+            },
+          },
+        },
       },
     });
 
