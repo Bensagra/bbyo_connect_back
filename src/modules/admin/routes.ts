@@ -4,6 +4,7 @@ import { z } from "zod";
 import { ok, fail } from "../../common/api-response";
 import { asyncHandler } from "../../common/async-handler";
 import { writeAuditLog } from "../../common/audit";
+import { logger } from "../../config/logger";
 import { prisma } from "../../lib/prisma";
 import { requireAuth } from "../../middlewares/auth";
 import { allowRoles } from "../../middlewares/rbac";
@@ -172,41 +173,50 @@ adminRouter.get(
       });
     }
 
-    const users = await prisma.user.findMany({
-      where: andFilters.length > 0 ? { AND: andFilters } : {},
-      include: {
-        teenProfile: {
-          select: {
-            fullName: true,
-            chapterId: true,
-            regionId: true,
-            avatarUrl: true,
+    try {
+      const users = await prisma.user.findMany({
+        where: andFilters.length > 0 ? { AND: andFilters } : {},
+        include: {
+          teenProfile: {
+            select: {
+              fullName: true,
+              chapterId: true,
+              regionId: true,
+              avatarUrl: true,
+            },
+          },
+          chapterProfile: {
+            select: {
+              displayName: true,
+              chapterId: true,
+              location: true,
+            },
           },
         },
-        chapterProfile: {
-          select: {
-            displayName: true,
-            chapterId: true,
-            location: true,
-          },
+        orderBy: { createdAt: "desc" },
+        take: query.limit + 1,
+        ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+      });
+
+      const hasNextPage = users.length > query.limit;
+      const sliced = hasNextPage ? users.slice(0, query.limit) : users;
+
+      return ok(
+        res,
+        sliced.map((user) => sanitizeUser(user)),
+        {
+          hasNextPage,
+          nextCursor: hasNextPage ? sliced[sliced.length - 1]?.id ?? null : null,
         },
-      },
-      orderBy: { createdAt: "desc" },
-      take: query.limit + 1,
-      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
-    });
-
-    const hasNextPage = users.length > query.limit;
-    const sliced = hasNextPage ? users.slice(0, query.limit) : users;
-
-    return ok(
-      res,
-      sliced.map((user) => sanitizeUser(user)),
-      {
-        hasNextPage,
-        nextCursor: hasNextPage ? sliced[sliced.length - 1]?.id ?? null : null,
-      },
-    );
+      );
+    } catch (error) {
+      logger.error({ err: error }, "admin.users.list failed");
+      return ok(res, [], {
+        hasNextPage: false,
+        nextCursor: null,
+        degraded: true,
+      });
+    }
   }),
 );
 
@@ -594,32 +604,41 @@ adminRouter.get(
       });
     }
 
-    const chapters = await prisma.chapter.findMany({
-      where: andFilters.length > 0 ? { AND: andFilters } : {},
-      include: {
-        region: true,
-        _count: {
-          select: {
-            teenProfiles: true,
-            chapterUsers: true,
-            events: true,
-            projects: true,
-            oneTimeCodes: true,
+    try {
+      const chapters = await prisma.chapter.findMany({
+        where: andFilters.length > 0 ? { AND: andFilters } : {},
+        include: {
+          region: true,
+          _count: {
+            select: {
+              teenProfiles: true,
+              chapterUsers: true,
+              events: true,
+              projects: true,
+              oneTimeCodes: true,
+            },
           },
         },
-      },
-      orderBy: { name: "asc" },
-      take: query.limit + 1,
-      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
-    });
+        orderBy: { name: "asc" },
+        take: query.limit + 1,
+        ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+      });
 
-    const hasNextPage = chapters.length > query.limit;
-    const sliced = hasNextPage ? chapters.slice(0, query.limit) : chapters;
+      const hasNextPage = chapters.length > query.limit;
+      const sliced = hasNextPage ? chapters.slice(0, query.limit) : chapters;
 
-    return ok(res, sliced, {
-      hasNextPage,
-      nextCursor: hasNextPage ? sliced[sliced.length - 1]?.id ?? null : null,
-    });
+      return ok(res, sliced, {
+        hasNextPage,
+        nextCursor: hasNextPage ? sliced[sliced.length - 1]?.id ?? null : null,
+      });
+    } catch (error) {
+      logger.error({ err: error }, "admin.chapters.list failed");
+      return ok(res, [], {
+        hasNextPage: false,
+        nextCursor: null,
+        degraded: true,
+      });
+    }
   }),
 );
 
