@@ -16,16 +16,24 @@ const listEventsQuery = z.object({
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(30),
   visibility: z.enum(["public", "chapter", "region", "private"]).optional(),
+  regionId: z.string().optional(),
+  chapterId: z.string().optional(),
 });
 
 const eventSchema = z.object({
   chapterId: z.string().optional(),
+  regionId: z.string().optional(),
   title: z.string().min(3).max(200),
   description: z.string().min(3).max(4000),
   startAt: z.coerce.date(),
   endAt: z.coerce.date(),
   timezone: z.string().min(2).max(60),
   location: z.string().max(200).optional(),
+  addressLine: z.string().max(200).optional(),
+  city: z.string().max(120).optional(),
+  country: z.string().max(120).optional(),
+  lat: z.coerce.number().min(-90).max(90).optional(),
+  lng: z.coerce.number().min(-180).max(180).optional(),
   isVirtual: z.boolean().default(false),
   visibility: z.enum(["public", "chapter", "region", "private"]),
 });
@@ -47,17 +55,22 @@ async function canManageEvent(actor: Express.Request["authUser"], eventId: strin
   if (canModerate(actor.role)) {
     return true;
   }
+
+  const event = await prisma.event.findUnique({ where: { id: eventId } });
+  if (!event) {
+    return false;
+  }
+
+  if (event.createdByUserId === actor.id) {
+    return true;
+  }
+
   if (actor.role !== Role.chapter_verified) {
     return false;
   }
 
   const chapterProfile = await prisma.chapterProfile.findUnique({ where: { userId: actor.id } });
   if (!chapterProfile) {
-    return false;
-  }
-
-  const event = await prisma.event.findUnique({ where: { id: eventId } });
-  if (!event) {
     return false;
   }
 
@@ -83,6 +96,8 @@ eventsRouter.get(
         where: {
           deletedAt: null,
           visibility: query.visibility ? query.visibility : { in: visibilityIn },
+          ...(query.regionId ? { regionId: query.regionId } : {}),
+          ...(query.chapterId ? { chapterId: query.chapterId } : {}),
         },
         orderBy: { startAt: "asc" },
         take: limit + 1,
@@ -143,23 +158,104 @@ eventsRouter.post(
     const body = req.body as z.infer<typeof eventSchema>;
 
     let chapterId = body.chapterId;
+    let regionId = body.regionId;
+
+    if (body.endAt <= body.startAt) {
+      return fail(res, 400, "EVENT_TIME_INVALID", "Event end time must be after start time");
+    }
+
+    if (!body.isVirtual && !body.location && !body.addressLine && (body.lat === undefined || body.lng === undefined)) {
+      return fail(
+        res,
+        400,
+        "EVENT_LOCATION_REQUIRED",
+        "In-person events require a location, address, or coordinates",
+      );
+    }
+
     if (actor.role === Role.chapter_verified) {
       const chapterProfile = await prisma.chapterProfile.findUnique({ where: { userId: actor.id } });
       if (!chapterProfile) {
         return fail(res, 400, "CHAPTER_PROFILE_MISSING", "Chapter profile required to create chapter events");
       }
       chapterId = chapterProfile.chapterId;
+      const chapter = await prisma.chapter.findFirst({
+        where: {
+          id: chapterId,
+          deletedAt: null,
+        },
+        select: {
+          regionId: true,
+        },
+      });
+
+      if (!chapter) {
+        return fail(res, 404, "CHAPTER_NOT_FOUND", "Chapter not found");
+      }
+
+      regionId = chapter.regionId;
+    }
+
+    if (chapterId) {
+      const chapter = await prisma.chapter.findFirst({
+        where: {
+          id: chapterId,
+          deletedAt: null,
+          isActive: true,
+        },
+        select: {
+          regionId: true,
+        },
+      });
+
+      if (!chapter) {
+        return fail(res, 400, "CHAPTER_NOT_FOUND", "Selected chapter is invalid");
+      }
+
+      regionId = chapter.regionId;
+    }
+
+    if (actor.role === Role.regional_admin && !regionId) {
+      return fail(
+        res,
+        400,
+        "REGION_REQUIRED",
+        "Regional accounts must select a region for regional events",
+      );
+    }
+
+    if (regionId) {
+      const region = await prisma.region.findFirst({
+        where: {
+          id: regionId,
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (!region) {
+        return fail(res, 400, "REGION_NOT_FOUND", "Selected region is invalid");
+      }
     }
 
     const event = await prisma.event.create({
       data: {
         chapterId,
+        regionId,
+        createdByUserId: actor.id,
         title: body.title,
         description: body.description,
         startAt: body.startAt,
         endAt: body.endAt,
         timezone: body.timezone,
-        location: body.location,
+        location: body.location ?? body.addressLine,
+        addressLine: body.addressLine,
+        city: body.city,
+        country: body.country,
+        lat: body.lat,
+        lng: body.lng,
         isVirtual: body.isVirtual,
         visibility: body.visibility,
       },

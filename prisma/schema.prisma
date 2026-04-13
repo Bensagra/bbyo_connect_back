@@ -237,6 +237,7 @@ model User {
   messageReadReceipts       MessageReadReceipt[]
   eventRegistrations        EventRegistration[]
   eventReminders            EventReminder[]
+  eventsCreated             Event[]                @relation("EventCreator")
   resourcesCreated          Resource[]             @relation("ResourceCreator")
   creativeProjects          CreativeProject[]
   userBadges                UserBadge[]
@@ -340,6 +341,7 @@ model Region {
   updatedAt   DateTime      @updatedAt
   deletedAt   DateTime?
   chapters    Chapter[]
+  events      Event[]
   teens       TeenProfile[]
   leaderboard LeaderboardSnapshot[]
 
@@ -623,22 +625,32 @@ model MessageReadReceipt {
 model Event {
   id          String          @id @default(cuid())
   chapterId   String?
+  regionId    String?
+  createdByUserId String?
   title       String
   description String
   startAt     DateTime
   endAt       DateTime
   timezone    String
   location    String?
+  addressLine String?
+  city        String?
+  country     String?
+  lat         Decimal?        @db.Decimal(10, 7)
+  lng         Decimal?        @db.Decimal(10, 7)
   isVirtual   Boolean         @default(false)
   visibility  EventVisibility
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   deletedAt   DateTime?
   chapter     Chapter?        @relation(fields: [chapterId], references: [id])
+  region      Region?         @relation(fields: [regionId], references: [id])
+  createdByUser User?         @relation("EventCreator", fields: [createdByUserId], references: [id])
   registrations EventRegistration[]
   reminders   EventReminder[]
 
   @@index([chapterId, startAt])
+  @@index([regionId, startAt])
   @@index([visibility, startAt])
 }
 

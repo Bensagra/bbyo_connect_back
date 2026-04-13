@@ -125,6 +125,75 @@ messagingRouter.post(
       return fail(res, 403, "GUEST_CHAT_FORBIDDEN", "Guest users cannot be part of chat conversations");
     }
 
+    if (body.type === "private" && uniqueMemberIds.length !== 2) {
+      return fail(
+        res,
+        400,
+        "PRIVATE_CHAT_MEMBER_LIMIT",
+        "Private conversations must include exactly one recipient",
+      );
+    }
+
+    if (body.type === "private") {
+      const recipientId = uniqueMemberIds.find((id) => id !== actor.id);
+      if (!recipientId) {
+        return fail(res, 400, "INVALID_MEMBERS", "A private recipient is required");
+      }
+
+      const existingConversation = await prisma.conversation.findFirst({
+        where: {
+          type: "private",
+          deletedAt: null,
+          members: {
+            every: {
+              deletedAt: null,
+            },
+          },
+          AND: [
+            {
+              members: {
+                some: {
+                  userId: actor.id,
+                  deletedAt: null,
+                },
+              },
+            },
+            {
+              members: {
+                some: {
+                  userId: recipientId,
+                  deletedAt: null,
+                },
+              },
+            },
+            {
+              NOT: {
+                members: {
+                  some: {
+                    userId: {
+                      notIn: [actor.id, recipientId],
+                    },
+                    deletedAt: null,
+                  },
+                },
+              },
+            },
+          ],
+        },
+        include: {
+          members: {
+            where: {
+              deletedAt: null,
+            },
+          },
+        },
+      });
+
+      if (existingConversation) {
+        return ok(res, existingConversation);
+      }
+    }
+
     const conversation = await prisma.conversation.create({
       data: {
         type: body.type,
@@ -216,6 +285,71 @@ messagingRouter.post(
 
     if (actor.role === Role.teen_pending && conversation.type === "private") {
       return fail(res, 403, "PENDING_PRIVATE_CHAT_RESTRICTED", "Pending teens cannot send private messages");
+    }
+
+    if (conversation.type === "private") {
+      const members = await prisma.conversationMember.findMany({
+        where: {
+          conversationId,
+          deletedAt: null,
+        },
+        select: {
+          userId: true,
+        },
+      });
+
+      const participantIds = members.map((member) => member.userId);
+      const recipientId = participantIds.find((id) => id !== actor.id);
+
+      if (!recipientId || participantIds.length !== 2) {
+        return fail(
+          res,
+          400,
+          "PRIVATE_CHAT_CONFIGURATION_INVALID",
+          "Private chats must contain exactly two participants",
+        );
+      }
+
+      const [actorToRecipient, recipientToActor] = await Promise.all([
+        prisma.userFollow.findFirst({
+          where: {
+            followerUserId: actor.id,
+            followingUserId: recipientId,
+            status: "accepted",
+            deletedAt: null,
+          },
+          select: { id: true },
+        }),
+        prisma.userFollow.findFirst({
+          where: {
+            followerUserId: recipientId,
+            followingUserId: actor.id,
+            status: "accepted",
+            deletedAt: null,
+          },
+          select: { id: true },
+        }),
+      ]);
+
+      const isMutualFollow = Boolean(actorToRecipient && recipientToActor);
+      if (!isMutualFollow) {
+        const sentCount = await prisma.message.count({
+          where: {
+            conversationId,
+            senderId: actor.id,
+            deletedAt: null,
+          },
+        });
+
+        if (sentCount >= 1) {
+          return fail(
+            res,
+            403,
+            "FOLLOW_REQUIRED_FOR_UNLIMITED_DM",
+            "Only one safety message is allowed until both users follow each other",
+          );
+        }
+      }
     }
 
     const blockedWord = findBlockedWord(body.content);
