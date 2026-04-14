@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ok, fail } from "../../common/api-response";
 import { asyncHandler } from "../../common/async-handler";
 import { requireAuth } from "../../middlewares/auth";
-import { validateParams, validateQuery } from "../../middlewares/validate";
+import { validateBody, validateParams, validateQuery } from "../../middlewares/validate";
 import { prisma } from "../../lib/prisma";
 
 const notificationsRouter = Router();
@@ -16,6 +16,15 @@ const listQuerySchema = z.object({
 
 const idParamsSchema = z.object({
   id: z.string().min(1),
+});
+
+const upsertDeviceTokenSchema = z.object({
+  pushToken: z.string().min(10).max(500),
+  platform: z.enum(["ios", "android", "web"]),
+});
+
+const deleteDeviceTokenSchema = z.object({
+  pushToken: z.string().min(10).max(500),
 });
 
 notificationsRouter.get(
@@ -75,6 +84,88 @@ notificationsRouter.patch(
     });
 
     return ok(res, updated);
+  }),
+);
+
+notificationsRouter.post(
+  "/device-token",
+  requireAuth,
+  validateBody(upsertDeviceTokenSchema),
+  asyncHandler(async (req, res) => {
+    const actor = req.authUser!;
+    const body = req.body as z.infer<typeof upsertDeviceTokenSchema>;
+
+    const normalizedToken = body.pushToken.trim();
+
+    const existing = await prisma.deviceToken.findFirst({
+      where: {
+        pushToken: normalizedToken,
+      },
+      select: {
+        id: true,
+        userId: true,
+      },
+    });
+
+    if (existing && existing.userId !== actor.id) {
+      await prisma.deviceToken.update({
+        where: { id: existing.id },
+        data: {
+          userId: actor.id,
+          platform: body.platform,
+          deletedAt: null,
+        },
+      });
+    } else if (existing) {
+      await prisma.deviceToken.update({
+        where: { id: existing.id },
+        data: {
+          platform: body.platform,
+          deletedAt: null,
+        },
+      });
+    } else {
+      await prisma.deviceToken.create({
+        data: {
+          userId: actor.id,
+          platform: body.platform,
+          pushToken: normalizedToken,
+        },
+      });
+    }
+
+    return ok(res, {
+      pushToken: normalizedToken,
+      platform: body.platform,
+    });
+  }),
+);
+
+notificationsRouter.delete(
+  "/device-token",
+  requireAuth,
+  validateBody(deleteDeviceTokenSchema),
+  asyncHandler(async (req, res) => {
+    const actor = req.authUser!;
+    const body = req.body as z.infer<typeof deleteDeviceTokenSchema>;
+
+    const normalizedToken = body.pushToken.trim();
+
+    await prisma.deviceToken.updateMany({
+      where: {
+        userId: actor.id,
+        pushToken: normalizedToken,
+        deletedAt: null,
+      },
+      data: {
+        deletedAt: new Date(),
+      },
+    });
+
+    return ok(res, {
+      pushToken: normalizedToken,
+      removed: true,
+    });
   }),
 );
 

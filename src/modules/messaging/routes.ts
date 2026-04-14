@@ -9,6 +9,7 @@ import { requireAuth } from "../../middlewares/auth";
 import { denyRoles } from "../../middlewares/rbac";
 import { validateBody, validateParams, validateQuery } from "../../middlewares/validate";
 import { prisma } from "../../lib/prisma";
+import { sendPushNotificationToUser } from "../../lib/firebase-messaging";
 import { emitToConversation, emitToUser } from "../../realtime/socket";
 
 const messagingRouter = Router();
@@ -402,6 +403,13 @@ messagingRouter.post(
       });
 
       emitToUser(recipient.userId, "notification.created", notification);
+
+      await sendPushNotificationToUser({
+        userId: recipient.userId,
+        title: notification.title,
+        body: notification.body,
+        dataJson: notification.dataJson,
+      });
     }
 
     emitToConversation(conversationId, "message.created", message);

@@ -1,7 +1,15 @@
 import { PrismaClient, Role, UserStatus, Visibility, PostCategory, Locale, EventVisibility, EventRegistrationStatus, ResourceType, CreativeProjectStatus, PointsSourceType, ReportTargetType, ReportStatus, ModerationActionType, NotificationType, DevicePlatform } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 import argon2 from "argon2";
+import { Pool } from "pg";
 
-const prisma = new PrismaClient();
+const pool = new Pool({
+  connectionString: process.env["DATABASE_URL"],
+});
+
+const prisma = new PrismaClient({
+  adapter: new PrismaPg(pool),
+});
 
 async function clearDatabase() {
   await prisma.auditLog.deleteMany();
@@ -42,10 +50,584 @@ async function clearDatabase() {
   await prisma.user.deleteMany();
 }
 
+type ImportedChapterSeed = {
+  regionName: string;
+  regionCountryCode: string;
+  chapterName: string;
+  chapterNumber?: string;
+  city: string;
+  country: string;
+  lat: number;
+  lng: number;
+};
+
+const DEFAULT_IMPORTED_CHAPTER_PASSWORD = "Chapters2026!";
+
+const importedChapters: ImportedChapterSeed[] = [
+  {
+    regionName: "Global - Argentina",
+    regionCountryCode: "AR",
+    chapterName: "Club Nautico Hacoaj BBYO",
+    city: "Buenos Aires",
+    country: "Argentina",
+    lat: -34.6037,
+    lng: -58.3816,
+  },
+  {
+    regionName: "Global - Argentina",
+    regionCountryCode: "AR",
+    chapterName: "Cordoba BBYO",
+    chapterNumber: "5681",
+    city: "Cordoba",
+    country: "Argentina",
+    lat: -31.4201,
+    lng: -64.1888,
+  },
+  {
+    regionName: "Global - Argentina",
+    regionCountryCode: "AR",
+    chapterName: "Dimion BBYO",
+    chapterNumber: "5613",
+    city: "Buenos Aires",
+    country: "Argentina",
+    lat: -34.6037,
+    lng: -58.3816,
+  },
+  {
+    regionName: "Global - Argentina",
+    regionCountryCode: "AR",
+    chapterName: "Lejadesh BBYO",
+    chapterNumber: "5612",
+    city: "Buenos Aires",
+    country: "Argentina",
+    lat: -34.6037,
+    lng: -58.3816,
+  },
+  {
+    regionName: "Global - Argentina",
+    regionCountryCode: "AR",
+    chapterName: "Ligdol BBYO",
+    chapterNumber: "5044",
+    city: "Buenos Aires",
+    country: "Argentina",
+    lat: -34.6037,
+    lng: -58.3816,
+  },
+  {
+    regionName: "Global - Argentina",
+    regionCountryCode: "AR",
+    chapterName: "Meirim BBYO",
+    chapterNumber: "5618",
+    city: "Buenos Aires",
+    country: "Argentina",
+    lat: -34.6037,
+    lng: -58.3816,
+  },
+  {
+    regionName: "Global - Argentina",
+    regionCountryCode: "AR",
+    chapterName: "SHAbados BBYO",
+    chapterNumber: "5045",
+    city: "Buenos Aires",
+    country: "Argentina",
+    lat: -34.6037,
+    lng: -58.3816,
+  },
+  {
+    regionName: "Global - Asia Pacific Region",
+    regionCountryCode: "AP",
+    chapterName: "Beijing BBYO",
+    city: "Beijing",
+    country: "China",
+    lat: 39.9042,
+    lng: 116.4074,
+  },
+  {
+    regionName: "Global - Asia Pacific Region",
+    regionCountryCode: "AP",
+    chapterName: "Hong Kong BBYO",
+    city: "Hong Kong",
+    country: "China",
+    lat: 22.3193,
+    lng: 114.1694,
+  },
+  {
+    regionName: "Global - Asia Pacific Region",
+    regionCountryCode: "AP",
+    chapterName: "Singapore BBYO",
+    city: "Singapore",
+    country: "Singapore",
+    lat: 1.3521,
+    lng: 103.8198,
+  },
+  {
+    regionName: "Global - Asia Pacific Region",
+    regionCountryCode: "AP",
+    chapterName: "Taipei BBYO",
+    city: "Taipei",
+    country: "Taiwan",
+    lat: 25.033,
+    lng: 121.5654,
+  },
+  {
+    regionName: "Global - Asia Pacific Region",
+    regionCountryCode: "AP",
+    chapterName: "Tokyo BBYO",
+    city: "Tokyo",
+    country: "Japan",
+    lat: 35.6762,
+    lng: 139.6503,
+  },
+  {
+    regionName: "Global - Asia Pacific Region",
+    regionCountryCode: "AP",
+    chapterName: "Zhenjews BBYO",
+    city: "Shanghai",
+    country: "China",
+    lat: 31.2304,
+    lng: 121.4737,
+  },
+  {
+    regionName: "Global - Mexico",
+    regionCountryCode: "MX",
+    chapterName: "Los Chilangos BBYO",
+    chapterNumber: "5543",
+    city: "Ciudad de Mexico",
+    country: "Mexico",
+    lat: 19.4326,
+    lng: -99.1332,
+  },
+  {
+    regionName: "Global - Mexico",
+    regionCountryCode: "MX",
+    chapterName: "Mexico City BBYO",
+    city: "Ciudad de Mexico",
+    country: "Mexico",
+    lat: 19.4326,
+    lng: -99.1332,
+  },
+  {
+    regionName: "Global - Chile",
+    regionCountryCode: "CL",
+    chapterName: "Jutzpa BBYO",
+    chapterNumber: "5604",
+    city: "Santiago",
+    country: "Chile",
+    lat: -33.4489,
+    lng: -70.6693,
+  },
+  {
+    regionName: "Global - Uruguay",
+    regionCountryCode: "UY",
+    chapterName: "Macabi Tzair BBYO",
+    chapterNumber: "5409",
+    city: "Montevideo",
+    country: "Uruguay",
+    lat: -34.9011,
+    lng: -56.1645,
+  },
+  {
+    regionName: "Global - Uruguay",
+    regionCountryCode: "UY",
+    chapterName: "Punta del Este BBYO",
+    city: "Punta del Este",
+    country: "Uruguay",
+    lat: -34.968,
+    lng: -54.9526,
+  },
+  {
+    regionName: "Global - Uruguay",
+    regionCountryCode: "UY",
+    chapterName: "Zeut BBYO",
+    chapterNumber: "5264",
+    city: "Montevideo",
+    country: "Uruguay",
+    lat: -34.9011,
+    lng: -56.1645,
+  },
+  {
+    regionName: "Global - United Kingdom",
+    regionCountryCode: "GB",
+    chapterName: "Edgware - Deganya BBYO",
+    chapterNumber: "5049",
+    city: "Edgware",
+    country: "United Kingdom",
+    lat: 51.613,
+    lng: -0.275,
+  },
+  {
+    regionName: "Global - United Kingdom",
+    regionCountryCode: "GB",
+    chapterName: "Kehila BBYO",
+    chapterNumber: "5602",
+    city: "London",
+    country: "United Kingdom",
+    lat: 51.5072,
+    lng: -0.1276,
+  },
+  {
+    regionName: "Global - United Kingdom",
+    regionCountryCode: "GB",
+    chapterName: "Manchester BBYO",
+    chapterNumber: "5051",
+    city: "Manchester",
+    country: "United Kingdom",
+    lat: 53.4808,
+    lng: -2.2426,
+  },
+  {
+    regionName: "Global - United Kingdom",
+    regionCountryCode: "GB",
+    chapterName: "Mercaz BBYO",
+    chapterNumber: "5050",
+    city: "London",
+    country: "United Kingdom",
+    lat: 51.5072,
+    lng: -0.1276,
+  },
+  {
+    regionName: "Global - United Kingdom",
+    regionCountryCode: "GB",
+    chapterName: "Watford BBYO",
+    city: "Watford",
+    country: "United Kingdom",
+    lat: 51.6565,
+    lng: -0.3903,
+  },
+  {
+    regionName: "Global - JDC's Active Jewish Teens: Ukraine",
+    regionCountryCode: "UA",
+    chapterName: "AJT Anahnu - Poltava",
+    chapterNumber: "5448",
+    city: "Poltava",
+    country: "Ukraine",
+    lat: 49.5883,
+    lng: 34.5514,
+  },
+  {
+    regionName: "Global - JDC's Active Jewish Teens: Ukraine",
+    regionCountryCode: "UA",
+    chapterName: "AJT Arayot - Kharkov",
+    chapterNumber: "5449",
+    city: "Kharkiv",
+    country: "Ukraine",
+    lat: 49.9935,
+    lng: 36.2304,
+  },
+  {
+    regionName: "Global - JDC's Active Jewish Teens: Ukraine",
+    regionCountryCode: "UA",
+    chapterName: "AJT Be Jewish (Krivoy Rog)",
+    chapterNumber: "5451",
+    city: "Kryvyi Rih",
+    country: "Ukraine",
+    lat: 47.9105,
+    lng: 33.3918,
+  },
+  {
+    regionName: "Global - JDC's Active Jewish Teens: Ukraine",
+    regionCountryCode: "UA",
+    chapterName: "AJT Boker - Chernigov",
+    chapterNumber: "5453",
+    city: "Chernihiv",
+    country: "Ukraine",
+    lat: 51.4982,
+    lng: 31.2893,
+  },
+  {
+    regionName: "Global - JDC's Active Jewish Teens: Ukraine",
+    regionCountryCode: "UA",
+    chapterName: "AJT Derekh - Odessa (JCC - Beit Grant)",
+    chapterNumber: "5454",
+    city: "Odesa",
+    country: "Ukraine",
+    lat: 46.4825,
+    lng: 30.7233,
+  },
+  {
+    regionName: "Global - JDC's Active Jewish Teens: Ukraine",
+    regionCountryCode: "UA",
+    chapterName: "AJT Jewish Teen Club - Vinnitza",
+    chapterNumber: "5457",
+    city: "Vinnytsia",
+    country: "Ukraine",
+    lat: 49.2331,
+    lng: 28.4682,
+  },
+  {
+    regionName: "Global - JDC's Active Jewish Teens: Ukraine",
+    regionCountryCode: "UA",
+    chapterName: "AJT Jeworld (Zaporozhye)",
+    chapterNumber: "5458",
+    city: "Zaporizhzhia",
+    country: "Ukraine",
+    lat: 47.8388,
+    lng: 35.1396,
+  },
+  {
+    regionName: "Global - JDC's Active Jewish Teens: Ukraine",
+    regionCountryCode: "UA",
+    chapterName: "AJT KIT Migdal - Odessa (JCC)",
+    chapterNumber: "5461",
+    city: "Odesa",
+    country: "Ukraine",
+    lat: 46.4825,
+    lng: 30.7233,
+  },
+  {
+    regionName: "Global - JDC's Active Jewish Teens: Ukraine",
+    regionCountryCode: "UA",
+    chapterName: "AJT Kohavim - Sumy",
+    chapterNumber: "5463",
+    city: "Sumy",
+    country: "Ukraine",
+    lat: 50.9077,
+    lng: 34.7981,
+  },
+  {
+    regionName: "Global - JDC's Active Jewish Teens: Ukraine",
+    regionCountryCode: "UA",
+    chapterName: "AJT Lo Domim - Kiev",
+    chapterNumber: "5465",
+    city: "Kyiv",
+    country: "Ukraine",
+    lat: 50.4501,
+    lng: 30.5234,
+  },
+  {
+    regionName: "Global - JDC's Active Jewish Teens: Ukraine",
+    regionCountryCode: "UA",
+    chapterName: "AJT Neurim (Lvov)",
+    chapterNumber: "5466",
+    city: "Lviv",
+    country: "Ukraine",
+    lat: 49.8397,
+    lng: 24.0297,
+  },
+  {
+    regionName: "Global - JDC's Active Jewish Teens: Ukraine",
+    regionCountryCode: "UA",
+    chapterName: "AJT Sababa - Krivoy Rog",
+    chapterNumber: "5468",
+    city: "Kryvyi Rih",
+    country: "Ukraine",
+    lat: 47.9105,
+    lng: 33.3918,
+  },
+  {
+    regionName: "Global - JDC's Active Jewish Teens: Ukraine",
+    regionCountryCode: "UA",
+    chapterName: "AJT Shahar - Dnepro",
+    chapterNumber: "5469",
+    city: "Dnipro",
+    country: "Ukraine",
+    lat: 48.4647,
+    lng: 35.0462,
+  },
+  {
+    regionName: "Global - JDC's Active Jewish Teens: Ukraine",
+    regionCountryCode: "UA",
+    chapterName: "AJT Simha - Mirgorod",
+    chapterNumber: "5473",
+    city: "Myrhorod",
+    country: "Ukraine",
+    lat: 49.9685,
+    lng: 33.6089,
+  },
+  {
+    regionName: "Global - JDC's Active Jewish Teens: Ukraine",
+    regionCountryCode: "UA",
+    chapterName: "AJT Teen Club - Nikolaev",
+    chapterNumber: "5474",
+    city: "Mykolaiv",
+    country: "Ukraine",
+    lat: 46.975,
+    lng: 31.9946,
+  },
+  {
+    regionName: "Global - JDC's Active Jewish Teens: Russia",
+    regionCountryCode: "RU",
+    chapterName: "AJT Lemon Club - Saratov",
+    chapterNumber: "5426",
+    city: "Saratov",
+    country: "Russia",
+    lat: 51.5331,
+    lng: 46.0342,
+  },
+  {
+    regionName: "Global - JDC's Active Jewish Teens: Russia",
+    regionCountryCode: "RU",
+    chapterName: "AJT 4eclub - Chelyzbinsk",
+    chapterNumber: "5424",
+    city: "Chelyabinsk",
+    country: "Russia",
+    lat: 55.1644,
+    lng: 61.4368,
+  },
+  {
+    regionName: "Global - JDC's Active Jewish Teens: Russia",
+    regionCountryCode: "RU",
+    chapterName: "AJT Adain Lo - Sankt Petersburg (JCC)",
+    chapterNumber: "5425",
+    city: "Saint Petersburg",
+    country: "Russia",
+    lat: 59.9311,
+    lng: 30.3609,
+  },
+  {
+    regionName: "Global - JDC's Active Jewish Teens: Russia",
+    regionCountryCode: "RU",
+    chapterName: "AJT Ani ve Ata - Izhevsk",
+    chapterNumber: "5428",
+    city: "Izhevsk",
+    country: "Russia",
+    lat: 56.8528,
+    lng: 53.2115,
+  },
+  {
+    regionName: "Global - JDC's Active Jewish Teens: Russia",
+    regionCountryCode: "RU",
+    chapterName: "AJT ChickFair - Orel",
+    chapterNumber: "5429",
+    city: "Orel",
+    country: "Russia",
+    lat: 52.9671,
+    lng: 36.0696,
+  },
+  {
+    regionName: "Global - JDC's Active Jewish Teens: Russia",
+    regionCountryCode: "RU",
+    chapterName: "Sameah Ufa",
+    chapterNumber: "5427",
+    city: "Ufa",
+    country: "Russia",
+    lat: 54.7388,
+    lng: 55.9721,
+  },
+  {
+    regionName: "Global - JDC's Active Jewish Teens: Russia",
+    regionCountryCode: "RU",
+    chapterName: "SIBJEW Krasnoyarsk",
+    chapterNumber: "5566",
+    city: "Krasnoyarsk",
+    country: "Russia",
+    lat: 56.0153,
+    lng: 92.8932,
+  },
+  {
+    regionName: "Canada Pacific Region",
+    regionCountryCode: "CA",
+    chapterName: "Balagan BBYO",
+    city: "Vancouver",
+    country: "Canada",
+    lat: 49.2827,
+    lng: -123.1207,
+  },
+  {
+    regionName: "Hawaii",
+    regionCountryCode: "US",
+    chapterName: "Maui BBYO",
+    city: "Maui",
+    country: "United States",
+    lat: 20.8893,
+    lng: -156.4729,
+  },
+];
+
+function stripBbyoFromName(value: string): string {
+  return value
+    .replace(/\bBBYO\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-+/g, "-");
+}
+
+async function seedImportedChapterDirectory(params: {
+  advisorUserId: string;
+  chapterPasswordHash: string;
+}) {
+  const regionIdByKey = new Map<string, string>();
+
+  for (const [index, item] of importedChapters.entries()) {
+    const regionKey = `${item.regionName}::${item.regionCountryCode}`;
+    let regionId = regionIdByKey.get(regionKey);
+
+    if (!regionId) {
+      const region = await prisma.region.create({
+        data: {
+          name: item.regionName,
+          countryCode: item.regionCountryCode,
+        },
+      });
+      regionId = region.id;
+      regionIdByKey.set(regionKey, regionId);
+    }
+
+    const normalizedChapterName = stripBbyoFromName(item.chapterName);
+    const normalizedChapterNumber = item.chapterNumber?.replace(/[^0-9]/g, "");
+
+    const chapter = await prisma.chapter.create({
+      data: {
+        name: normalizedChapterName,
+        regionId,
+        city: item.city,
+        country: item.country,
+        lat: item.lat,
+        lng: item.lng,
+        isActive: true,
+      },
+    });
+
+    const memberId =
+      normalizedChapterNumber && normalizedChapterNumber.length > 0
+        ? `CHAP-${normalizedChapterNumber}`
+        : `CHAP-AUTO-${70000 + index}`;
+
+    const chapterUser = await prisma.user.create({
+      data: {
+        email: `${slugify(item.regionName)}.${slugify(normalizedChapterName)}.${index + 1}@chapters.bbyo.connect`,
+        memberId,
+        passwordHash: params.chapterPasswordHash,
+        role: Role.chapter_verified,
+        status: UserStatus.active,
+      },
+    });
+
+    await prisma.chapterProfile.create({
+      data: {
+        userId: chapterUser.id,
+        chapterId: chapter.id,
+        displayName: normalizedChapterName,
+        description:
+          normalizedChapterNumber && normalizedChapterNumber.length > 0
+            ? `Official chapter account. Chapter number #${normalizedChapterNumber}.`
+            : "Official chapter account. Chapter number not provided.",
+        location: `${item.city}, ${item.country}`,
+        advisorUserId: params.advisorUserId,
+      },
+    });
+  }
+
+  return {
+    regions: regionIdByKey.size,
+    chapters: importedChapters.length,
+  };
+}
+
 async function main() {
   await clearDatabase();
 
   const passwordHash = await argon2.hash("ChangeMe123!");
+  const importedChapterPasswordHash = await argon2.hash(
+    DEFAULT_IMPORTED_CHAPTER_PASSWORD,
+  );
 
   const [usaRegion, mexicoRegion, israelRegion, franceRegion] = await Promise.all([
     prisma.region.create({ data: { name: "Midwest", countryCode: "US" } }),
@@ -536,7 +1118,15 @@ async function main() {
     ],
   });
 
+  const importedResult = await seedImportedChapterDirectory({
+    advisorUserId: advisor.id,
+    chapterPasswordHash: importedChapterPasswordHash,
+  });
+
   console.log("Seed complete. Demo users password: ChangeMe123!");
+  console.log(
+    `Imported chapter directory complete. Regions: ${importedResult.regions}, chapters: ${importedResult.chapters}, default chapter password: ${DEFAULT_IMPORTED_CHAPTER_PASSWORD}`,
+  );
 }
 
 main()
@@ -546,4 +1136,5 @@ main()
   })
   .finally(async () => {
     await prisma.$disconnect();
+    await pool.end();
   });
