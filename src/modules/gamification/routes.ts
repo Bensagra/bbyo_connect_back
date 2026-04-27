@@ -1,7 +1,7 @@
 import { LeaderboardPeriod, LeaderboardScope, Role } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
-import { ok, fail } from "../../common/api-response";
+import { ok } from "../../common/api-response";
 import { asyncHandler } from "../../common/async-handler";
 import { requireAuth } from "../../middlewares/auth";
 import { denyRoles } from "../../middlewares/rbac";

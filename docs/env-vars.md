@@ -20,3 +20,10 @@ Optional with defaults:
 - `IDEMPOTENCY_TTL_SECONDS` (default: `300`)
 - `BANNED_WORDS` (comma-separated)
 - `UPLOAD_SIGNING_SECRET`
+- `FIREBASE_PROJECT_ID` (required only if push notifications are enabled)
+- `FIREBASE_CLIENT_EMAIL` (required only if push notifications are enabled)
+- `FIREBASE_PRIVATE_KEY` (required only if push notifications are enabled)
+
+Firebase notes:
+- If Firebase credentials are missing, backend push notifications are disabled gracefully.
+- Store `FIREBASE_PRIVATE_KEY` with escaped new lines (`\\n`) in `.env`/hosting secret manager.

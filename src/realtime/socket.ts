@@ -87,7 +87,7 @@ export function initSocket(server: HttpServer) {
       const claims = verifyAccessToken(token);
       (socket as AuthenticatedSocket).data.userId = claims.sub;
       return next();
-    } catch (error) {
+    } catch (_error) {
       return next(new Error("Invalid socket token"));
     }
   });

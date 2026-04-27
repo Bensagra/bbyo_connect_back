@@ -26,6 +26,10 @@ export const prismaMock = {
     count: jest.fn(),
     update: jest.fn(),
   },
+  region: {
+    findFirst: jest.fn(),
+    findMany: jest.fn(),
+  },
   verificationVouch: {
     findFirst: jest.fn(),
     create: jest.fn(),

@@ -37,6 +37,11 @@ describe("Critical flow: teen register + 2 vouches", () => {
     const app = createApp();
 
     prismaMock.user.findFirst.mockResolvedValue(null);
+    prismaMock.region.findFirst.mockResolvedValue({ id: "region-1" });
+    prismaMock.chapter.findFirst.mockResolvedValue({
+      id: "chapter-1",
+      regionId: "region-1",
+    });
     prismaMock.user.create.mockResolvedValue({
       id: "teen-pending-1",
       email: "newteen@bbyo.org",
@@ -58,6 +63,8 @@ describe("Critical flow: teen register + 2 vouches", () => {
         password: "ChangeMe123!",
         profile: {
           fullName: "New Teen",
+          regionId: "region-1",
+          chapterId: "chapter-1",
           languages: ["en", "es"],
           interests: ["leadership"],
         },

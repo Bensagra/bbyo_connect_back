@@ -6,6 +6,12 @@ import { prisma } from "./prisma";
 let firebaseApp: App | null = null;
 let initAttempted = false;
 
+const permanentTokenErrorCodes = new Set<string>([
+  "messaging/invalid-registration-token",
+  "messaging/registration-token-not-registered",
+  "messaging/invalid-argument",
+]);
+
 function getFirebaseApp(): App | null {
   if (firebaseApp) {
     return firebaseApp;
@@ -65,6 +71,13 @@ function toStringData(value: unknown): Record<string, string> {
   return output;
 }
 
+function isPermanentTokenError(code: string | undefined): boolean {
+  if (!code) {
+    return false;
+  }
+  return permanentTokenErrorCodes.has(code);
+}
+
 export async function sendPushNotificationToUser(params: {
   userId: string;
   title: string;
@@ -90,10 +103,18 @@ export async function sendPushNotificationToUser(params: {
     return;
   }
 
+  const activeTokens = tokens
+    .map((item) => item.pushToken.trim())
+    .filter((token) => token.length > 0);
+
+  if (!activeTokens.length) {
+    return;
+  }
+
   try {
     const messaging = getMessaging(app);
     const response = await messaging.sendEachForMulticast({
-      tokens: tokens.map((item) => item.pushToken),
+      tokens: activeTokens,
       notification: {
         title: params.title,
         body: params.body,
@@ -109,6 +130,42 @@ export async function sendPushNotificationToUser(params: {
         },
         "Some push notifications failed",
       );
+
+      const invalidTokens = new Set<string>();
+      response.responses.forEach((sendResult, index) => {
+        if (sendResult.success) {
+          return;
+        }
+
+        if (isPermanentTokenError(sendResult.error?.code)) {
+          const token = activeTokens[index];
+          if (token) {
+            invalidTokens.add(token);
+          }
+        }
+      });
+
+      if (invalidTokens.size > 0) {
+        await prisma.deviceToken.updateMany({
+          where: {
+            pushToken: {
+              in: Array.from(invalidTokens),
+            },
+            deletedAt: null,
+          },
+          data: {
+            deletedAt: new Date(),
+          },
+        });
+
+        logger.info(
+          {
+            userId: params.userId,
+            removedTokenCount: invalidTokens.size,
+          },
+          "Removed invalid Firebase device tokens",
+        );
+      }
     }
   } catch (error) {
     logger.warn(

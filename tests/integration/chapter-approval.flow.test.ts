@@ -63,6 +63,7 @@ describe("Critical flow: chapter register + approval", () => {
       return Promise.resolve(users[where.id] ?? null);
     });
     prismaMock.user.create.mockResolvedValue(chapterUser);
+    prismaMock.chapter.findFirst.mockResolvedValue({ id: "chapter-1" });
     prismaMock.chapterApprovalRequest.create.mockResolvedValue({ id: "approval-1", chapterUserId: chapterUser.id, status: "pending" });
     prismaMock.sessionRefreshToken.create.mockResolvedValue({ id: "session-1" });
     prismaMock.auditLog.create.mockResolvedValue({ id: "audit-1" });

@@ -1,7 +1,7 @@
 import { Role, Visibility } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
-import { ok, fail } from "../../common/api-response";
+import { ok } from "../../common/api-response";
 import { asyncHandler } from "../../common/async-handler";
 import { logger } from "../../config/logger";
 import { requireAuth } from "../../middlewares/auth";
